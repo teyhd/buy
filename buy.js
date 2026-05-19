@@ -18,7 +18,7 @@ import { config } from 'dotenv';
 import { resolve } from 'path';
 config({ path: resolve(__dirname, '.env') });
 
-import {view,find,viewarchive,vieworder,myorders,findOrders,manageOrders,orderAnalytics,orderAnalyticsCsv,updateOrderAccounting,updateOrderStatus,formOrder,createOrder,editOrder,updateOrder,editOrderAdmin,updateOrderAdmin,deleteOrder,cancelOrder} from './vendor/db.js'
+import {view,find,viewarchive,vieworder,myorders,findOrders,manageOrders,orderAnalytics,orderAnalyticsCsv,updateOrderAccounting,updateOrderStatus,formOrder,formOrderForUser,createOrder,createOrderForUser,editOrder,updateOrder,editOrderAdmin,updateOrderAdmin,deleteOrder,cancelOrder} from './vendor/db.js'
 import { createSsoAuth } from './vendor/ssoAuth.js'
 
 const app = express();
@@ -133,14 +133,14 @@ export function ensureAdmin(req, res, next) {
 }
 
 export function ensureUser(req, res, next) {
-    if (req.session && req.session.user && req.session.user.is_admin === 0) {
+    if (req.session && req.session.user) {
         return next();
     }
     res.status(403).render('error', {
         title: 'Нет доступа',
         code: 403,
         heading: 'Нет доступа',
-        message: 'Эта страница доступна только пользователям сервиса buy.',
+        message: 'Эта страница доступна только авторизованным пользователям сервиса buy.',
         isAuthenticated: req.session?.isAuthenticated,
         user: req.session?.user,
     });
@@ -165,6 +165,12 @@ function normalizePriceInput(value) {
     return String(value || '').replace(',', '.').trim();
 }
 
+function normalizeUrlInput(value) {
+    const text = String(value || '').trim();
+    if (!text) return text;
+    return /^https?:\/\//i.test(text) ? text : `https://${text}`;
+}
+
 function todayOrFuture(value) {
     const selected = new Date(value);
     if (Number.isNaN(selected.getTime())) return false;
@@ -175,17 +181,17 @@ function todayOrFuture(value) {
 }
 
 const orderValidators = [
-    body('good').trim().isLength({ min: 2, max: 50 }).withMessage('Название должно быть длиной от 2 до 50 символов.'),
+    body('good').trim().isLength({ min: 2, max: 255 }).withMessage('Название должно быть длиной от 2 до 255 символов.'),
     body('quantity').isInt({ min: 1, max: 500 }).withMessage('Можно заказать от 1 до 500 единиц товара.'),
     body('price').customSanitizer(normalizePriceInput).isFloat({ min: 1, max: 1000000 }).withMessage('Стоимость должна быть числом от 1 до 1 000 000.'),
-    body('link').trim().isURL({ require_protocol: true }).withMessage('Укажите корректную ссылку с http:// или https://.'),
+    body('link').customSanitizer(normalizeUrlInput).isURL({ require_protocol: true }).withMessage('Укажите корректную ссылку.'),
     body('arrival_date').isISO8601().withMessage('Укажите дату доставки.').custom(todayOrFuture).withMessage('Желаемая дата доставки не может быть раньше текущего дня.'),
 ];
 
 const adminOrderValidators = [
     body('quantity').isInt({ min: 1, max: 500 }).withMessage('Можно заказать от 1 до 500 единиц товара.'),
     body('price').customSanitizer(normalizePriceInput).isFloat({ min: 1, max: 1000000 }).withMessage('Стоимость должна быть числом от 1 до 1 000 000.'),
-    body('link').trim().isURL({ require_protocol: true }).withMessage('Укажите корректную ссылку с http:// или https://.'),
+    body('link').customSanitizer(normalizeUrlInput).isURL({ require_protocol: true }).withMessage('Укажите корректную ссылку.'),
 ];
 
 // routes
@@ -238,6 +244,19 @@ app.get('/analytics/export.csv', ensureAuthenticated, ensureAdmin, orderAnalytic
 app.post('/analytics/:id/accounting', ensureAuthenticated, ensureAdmin, updateOrderAccounting);
 
 app.get('/manageorders', ensureAuthenticated, ensureAdmin, manageOrders);
+app.get('/manageorders/addorder', ensureAuthenticated, ensureAdmin, formOrderForUser);
+app.post('/manageorders/addorder', ensureAuthenticated, ensureAdmin,
+    orderValidators,
+    (req, res) => {
+        const errors = validationResult(req);
+
+        if (!errors.isEmpty()) {
+            return formOrderForUser(req, res, fieldErrorsFromResult(errors), 'Проверьте поля формы.');
+        }
+
+        createOrderForUser(req, res);
+    }
+);
 app.get('/manageorders/editorderadmin/:id', ensureAuthenticated, ensureAdmin, editOrderAdmin);
 app.post('/manageorders/editorderadmin/:id', ensureAuthenticated, ensureAdmin,
     adminOrderValidators,
@@ -286,6 +305,10 @@ app.post('/myorders/addorder', ensureAuthenticated, ensureUser,
         if (!errors.isEmpty()) {
             return res.status(422).render('add-order', {
                 title: 'Новый заказ',
+                pageTitle: 'Оформить новый заказ',
+                formAction: '/myorders/addorder',
+                breadcrumbRootHref: '/myorders',
+                breadcrumbRootText: 'Мои заказы',
                 alert: 'Проверьте поля формы.',
                 fieldErrors: fieldErrorsFromResult(errors),
                 order: req.body,

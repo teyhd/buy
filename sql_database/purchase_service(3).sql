@@ -36,6 +36,8 @@ CREATE TABLE `orders` (
   `arrival_date` datetime DEFAULT NULL,
   `author_id` bigint(20) UNSIGNED DEFAULT NULL,
   `sso_author_id` int(11) DEFAULT NULL,
+  `created_by_sso_id` int(11) DEFAULT NULL,
+  `created_mode` enum('self','admin_on_behalf') NOT NULL DEFAULT 'self',
   `status` enum('На рассмотрении','Закупаем','Доставляем','Ожидает получения','Получен','Отменен') DEFAULT NULL,
   `price` decimal(10,2) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -113,7 +115,9 @@ ALTER TABLE `orders`
   ADD KEY `idx_orders_arrival_date` (`arrival_date`),
   ADD KEY `idx_orders_price` (`price`),
   ADD KEY `idx_orders_sso_author_status` (`sso_author_id`,`status`),
-  ADD KEY `idx_orders_author_status` (`author_id`,`status`);
+  ADD KEY `idx_orders_author_status` (`author_id`,`status`),
+  ADD KEY `idx_orders_created_by_sso_id` (`created_by_sso_id`),
+  ADD KEY `idx_orders_created_mode` (`created_mode`);
 
 --
 -- Индексы таблицы `order_accounting`

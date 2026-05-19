@@ -1,6 +1,6 @@
 <div class="order-form mx-auto">
   <div class="form-floating mb-3">
-    <input type="text" class="form-control {{#if fieldErrors.good}}is-invalid{{/if}}" id="order-good" value="{{order.good}}" placeholder="Название" name="good" required minlength="2" maxlength="50">
+    <input type="text" class="form-control {{#if fieldErrors.good}}is-invalid{{/if}}" id="order-good" value="{{order.good}}" placeholder="Название" name="good" required minlength="2" maxlength="255">
     <label for="order-good">Название</label>
     {{#if fieldErrors.good}}<div class="invalid-feedback">{{fieldErrors.good}}</div>{{/if}}
   </div>
@@ -15,8 +15,8 @@
     </div>
     <div class="col-12 col-md-6">
       <div class="form-floating mb-3">
-        <input type="number" step="0.01" min="1" max="1000000" class="form-control {{#if fieldErrors.price}}is-invalid{{/if}}" id="order-price" value="{{order.price}}" placeholder="Стоимость" name="price" required>
-        <label for="order-price">Стоимость</label>
+        <input type="number" step="0.01" min="1" max="1000000" class="form-control {{#if fieldErrors.price}}is-invalid{{/if}}" id="order-price" value="{{order.price}}" placeholder="Ориентировочная общая стоимость" name="price" required>
+        <label for="order-price">Ориентировочная общая стоимость</label>
         {{#if fieldErrors.price}}<div class="invalid-feedback">{{fieldErrors.price}}</div>{{/if}}
       </div>
     </div>

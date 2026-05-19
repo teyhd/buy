@@ -29,6 +29,8 @@ const STATUS_CLASS = {
     [ORDER_STATUS.CANCELLED]: 'dark',
 };
 
+const SSO_SERVICE_ID = Number(process.env.SSO_SERVICE_ID || 12);
+
 const PAYMENT_STATUS = Object.freeze({
     NOT_PLANNED: 'not_planned',
     PLANNED: 'planned',
@@ -69,13 +71,21 @@ const OWNER_LABEL_SQL = `COALESCE(
 )`;
 const OWNER_TYPE_SQL = `CASE WHEN orders.sso_author_id IS NULL THEN 'legacy' ELSE 'sso' END`;
 const OWNER_REF_SQL = `COALESCE(orders.sso_author_id, orders.author_id)`;
+const CREATED_BY_LABEL_SQL = `COALESCE(
+    NULLIF(creator_users.name, ''),
+    NULLIF(creator_users.nickname, ''),
+    NULLIF(creator_users.msgnickname, ''),
+    CONCAT('SSO #', orders.created_by_sso_id)
+)`;
 const ORDER_OWNER_SELECT = `orders.*,
     ${OWNER_LABEL_SQL} AS owner_label,
     ${OWNER_LABEL_SQL} AS email,
     ${OWNER_TYPE_SQL} AS owner_type,
-    ${OWNER_REF_SQL} AS owner_ref`;
+    ${OWNER_REF_SQL} AS owner_ref,
+    ${CREATED_BY_LABEL_SQL} AS created_by_label`;
 const ORDER_OWNER_JOINS = `LEFT JOIN sso.users AS sso_users ON sso_users.id = orders.sso_author_id
-    LEFT JOIN users AS legacy_users ON legacy_users.id = orders.author_id`;
+    LEFT JOIN users AS legacy_users ON legacy_users.id = orders.author_id
+    LEFT JOIN sso.users AS creator_users ON creator_users.id = orders.created_by_sso_id`;
 const ACCOUNTING_JOIN = `LEFT JOIN order_accounting AS accounting ON accounting.order_id = orders.id`;
 const ORDER_ANALYTICS_SELECT = `${ORDER_OWNER_SELECT},
     accounting.order_id AS accounting_order_id,
@@ -219,6 +229,8 @@ function attachOrderUi(row) {
         status_options: statusOptions(row.status),
         is_pending: row.status === ORDER_STATUS.PENDING,
         is_closed: isClosedStatus(row.status),
+        created_by_admin: row.created_mode === 'admin_on_behalf',
+        created_by_label: row.created_by_label || '',
         link_label: shortLink(row.link),
         price_label: formatMoney(row.price),
     };
@@ -661,6 +673,88 @@ function appendWhere(whereSql, condition) {
     return whereSql ? `${whereSql} AND ${condition}` : `WHERE ${condition}`;
 }
 
+function normalizeUrl(value) {
+    const text = normalizeText(value);
+    if (!text) return '';
+    if (/^https?:\/\//i.test(text)) return text;
+    return `https://${text}`;
+}
+
+function ssoUserLabel(row) {
+    return row?.label || `SSO #${row?.id || ''}`;
+}
+
+async function loadBuySsoUsers(connection, { q = '', selectedId = null } = {}) {
+    const where = ['sso_users.status = 1'];
+    const params = [SSO_SERVICE_ID];
+    if (q) {
+        const like = `%${q}%`;
+        where.push(`(
+            sso_users.name LIKE ?
+            OR sso_users.nickname LIKE ?
+            OR sso_users.msgnickname LIKE ?
+        )`);
+        params.push(like, like, like);
+    }
+
+    const [rows] = await connection.query(
+        `SELECT sso_users.id,
+            COALESCE(
+                NULLIF(sso_users.name, ''),
+                NULLIF(sso_users.nickname, ''),
+                NULLIF(sso_users.msgnickname, ''),
+                CONCAT('SSO #', sso_users.id)
+            ) AS label,
+            MAX(sso_rights.role_id) AS role_id
+         FROM sso.users AS sso_users
+         INNER JOIN sso.rights AS sso_rights
+            ON sso_rights.usr_id = sso_users.id
+            AND sso_rights.srv_id = ?
+            AND sso_rights.role_id > 0
+         WHERE ${where.join(' AND ')}
+         GROUP BY sso_users.id, sso_users.name, sso_users.nickname, sso_users.msgnickname
+         ORDER BY label ASC
+         LIMIT 50`,
+        params
+    );
+
+    if (selectedId && !rows.some((row) => Number(row.id) === Number(selectedId))) {
+        const selected = await loadBuySsoUserById(connection, selectedId);
+        if (selected) {
+            rows.unshift(selected);
+        }
+    }
+
+    return rows;
+}
+
+async function loadBuySsoUserById(connection, ssoUserId) {
+    const id = normalizeId(ssoUserId);
+    if (!id) return null;
+
+    const [rows] = await connection.query(
+        `SELECT sso_users.id,
+            COALESCE(
+                NULLIF(sso_users.name, ''),
+                NULLIF(sso_users.nickname, ''),
+                NULLIF(sso_users.msgnickname, ''),
+                CONCAT('SSO #', sso_users.id)
+            ) AS label,
+            MAX(sso_rights.role_id) AS role_id
+         FROM sso.users AS sso_users
+         INNER JOIN sso.rights AS sso_rights
+            ON sso_rights.usr_id = sso_users.id
+            AND sso_rights.srv_id = ?
+            AND sso_rights.role_id > 0
+         WHERE sso_users.id = ?
+            AND sso_users.status = 1
+         GROUP BY sso_users.id, sso_users.name, sso_users.nickname, sso_users.msgnickname
+         LIMIT 1`,
+        [SSO_SERVICE_ID, id]
+    );
+    return rows[0] || null;
+}
+
 function analyticsFilterQuery(filters) {
     return {
         q: filters.q,
@@ -732,34 +826,54 @@ function renderError(res, req, status, heading, message) {
 async function loadMyOrdersPage(connection, req) {
     const ssoUserId = getSsoUserId(req);
     const page = normalizePage(req.query.page);
-    const limit = 5;
+    const limit = 10;
     const offset = (page - 1) * limit;
     const q = normalizeText(req.query.q || req.query.search);
     const status = isValidStatus(req.query.status) ? req.query.status : '';
 
-    const where = ['sso_author_id = ?'];
+    const where = ['orders.sso_author_id = ?'];
     const params = [ssoUserId];
     if (status) {
-        where.push('status = ?');
+        where.push('orders.status = ?');
         params.push(status);
     }
     if (q) {
-        where.push('(good LIKE ? OR link LIKE ?)');
+        where.push('(orders.good LIKE ? OR orders.link LIKE ?)');
         params.push(`%${q}%`, `%${q}%`);
     }
 
     const whereSql = `WHERE ${where.join(' AND ')}`;
     const [rows] = await connection.query(
-        `SELECT * FROM orders ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`,
+        `SELECT ${ORDER_OWNER_SELECT}
+         FROM orders
+         ${ORDER_OWNER_JOINS}
+         ${whereSql}
+         ORDER BY orders.id DESC
+         LIMIT ? OFFSET ?`,
         [...params, limit, offset]
     );
     const [totalRows] = await connection.query(`SELECT COUNT(*) AS total FROM orders ${whereSql}`, params);
+    const [summaryRows] = await connection.query(
+        `SELECT
+            COUNT(*) AS total_count,
+            SUM(CASE WHEN status NOT IN (?, ?) THEN 1 ELSE 0 END) AS active_count,
+            SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END) AS closed_count
+         FROM orders
+         WHERE sso_author_id = ?`,
+        [...CLOSED_STATUSES, ...CLOSED_STATUSES, ssoUserId]
+    );
     const total = Number(totalRows[0]?.total || 0);
+    const summary = summaryRows[0] || {};
 
     return {
         rows: rows.map(attachOrderUi),
         hasRows: rows.length > 0,
         total,
+        summary: {
+            total_count: Number(summary.total_count || 0),
+            active_count: Number(summary.active_count || 0),
+            closed_count: Number(summary.closed_count || 0),
+        },
         filters: { q, status },
         hasFilters: Boolean(q || status),
         statusOptions: statusOptions(status),
@@ -1100,7 +1214,7 @@ export const manageOrders = async (req, res) => {
             hasFilters: Boolean(q || status),
             statusOptions: statusOptions(status, ACTIVE_STATUSES),
             currentUrl: buildUrl('/manageorders', { q, status }, page),
-            alert: req.query.updated || req.query.removed || req.query.error || null,
+            alert: req.query.created || req.query.updated || req.query.removed || req.query.error || null,
             ...pagination('/manageorders', page, total, limit, { q, status }),
             isAuthenticated: req.session.isAuthenticated,
             user: req.session.user,
@@ -1490,6 +1604,10 @@ export const findOrders = async (req, res) => {
 export const formOrder = (req, res) => {
     res.render('add-order', {
         title: 'Новый заказ',
+        pageTitle: 'Оформить новый заказ',
+        formAction: '/myorders/addorder',
+        breadcrumbRootHref: '/myorders',
+        breadcrumbRootText: 'Мои заказы',
         order: {},
         cancelUrl: '/myorders',
         isAuthenticated: req.session.isAuthenticated,
@@ -1497,9 +1615,49 @@ export const formOrder = (req, res) => {
     });
 };
 
+export const formOrderForUser = async (req, res, fieldErrors = {}, alert = null) => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const ownerSearch = normalizeText(req.body.owner_q || req.query.owner_q);
+        const selectedOwnerId = normalizeId(req.body.owner_sso_id || req.query.owner_sso_id);
+        const ownerRows = await loadBuySsoUsers(connection, { q: ownerSearch, selectedId: selectedOwnerId });
+        const ownerOptions = ownerRows.map((row) => ({
+            value: row.id,
+            label: `${ssoUserLabel(row)} · SSO #${row.id}`,
+            selected: Number(row.id) === Number(selectedOwnerId),
+        }));
+
+        res.render('add-order', {
+            title: 'Новый заказ за пользователя',
+            pageTitle: 'Оформить заказ за пользователя',
+            formAction: '/manageorders/addorder',
+            breadcrumbRootHref: '/manageorders',
+            breadcrumbRootText: 'Активные заказы',
+            adminOnBehalf: true,
+            ownerSearch,
+            ownerOptions,
+            hasOwnerOptions: ownerOptions.length > 0,
+            order: req.body || {},
+            fieldErrors,
+            alert,
+            cancelUrl: '/manageorders',
+            isAuthenticated: req.session.isAuthenticated,
+            user: req.session.user,
+        });
+    } catch (err) {
+        console.log(err);
+        mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось загрузить форму заказа за пользователя.');
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
 export const createOrder = async (req, res) => {
     let connection;
-    const { good, quantity, link, arrival_date } = req.body;
+    const { good, quantity, arrival_date } = req.body;
+    const link = normalizeUrl(req.body.link);
     const price = normalizePrice(req.body.price);
     const ssoAuthorId = getSsoUserId(req);
     try {
@@ -1508,8 +1666,9 @@ export const createOrder = async (req, res) => {
         const [result] = await connection.query(
             `INSERT INTO orders
              SET good = ?, quantity = ?, price = ?, link = ?, creation_date = NOW(),
-                 arrival_date = ?, author_id = NULL, sso_author_id = ?, status = ?`,
-            [good, quantity, price, link, arrival_date, ssoAuthorId, ORDER_STATUS.PENDING]
+                 arrival_date = ?, author_id = NULL, sso_author_id = ?, created_by_sso_id = ?,
+                 created_mode = ?, status = ?`,
+            [good, quantity, price, link, arrival_date, ssoAuthorId, ssoAuthorId, 'self', ORDER_STATUS.PENDING]
         );
         await connection.query(
             `INSERT INTO order_accounting
@@ -1531,6 +1690,59 @@ export const createOrder = async (req, res) => {
         console.log(err);
         mlog(err);
         renderError(res, req, 500, 'Ошибка сервера', 'Не удалось создать заказ.');
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+export const createOrderForUser = async (req, res) => {
+    let connection;
+    const { good, quantity, arrival_date } = req.body;
+    const link = normalizeUrl(req.body.link);
+    const price = normalizePrice(req.body.price);
+    const creatorId = getSsoUserId(req);
+    const ownerId = normalizeId(req.body.owner_sso_id);
+
+    if (!ownerId) {
+        return formOrderForUser(req, res, { owner_sso_id: 'Выберите заказчика из SSO.' }, 'Проверьте поля формы.');
+    }
+
+    try {
+        connection = await pool.getConnection();
+        const owner = await loadBuySsoUserById(connection, ownerId);
+        if (!owner) {
+            return formOrderForUser(req, res, { owner_sso_id: 'Пользователь не найден или у него нет роли buy.' }, 'Проверьте заказчика.');
+        }
+
+        const createdMode = ownerId === creatorId ? 'self' : 'admin_on_behalf';
+        await connection.beginTransaction();
+        const [result] = await connection.query(
+            `INSERT INTO orders
+             SET good = ?, quantity = ?, price = ?, link = ?, creation_date = NOW(),
+                 arrival_date = ?, author_id = NULL, sso_author_id = ?, created_by_sso_id = ?,
+                 created_mode = ?, status = ?`,
+            [good, quantity, price, link, arrival_date, ownerId, creatorId, createdMode, ORDER_STATUS.PENDING]
+        );
+        await connection.query(
+            `INSERT INTO order_accounting
+                (order_id, payment_status, fiscal_period, planned_amount, document_status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
+            [result.insertId, PAYMENT_STATUS.NOT_PLANNED, fiscalPeriodFromDate(arrival_date), price, DOCUMENT_STATUS.NONE]
+        );
+        await connection.commit();
+        mlog(`Администратор добавил заказ для SSO #${ownerId}.`);
+        res.redirect('/manageorders?created=' + encodeURIComponent(`Заказ для ${ssoUserLabel(owner)} добавлен.`));
+    } catch (err) {
+        if (connection) {
+            try {
+                await connection.rollback();
+            } catch (rollbackErr) {
+                mlog(rollbackErr);
+            }
+        }
+        console.log(err);
+        mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось создать заказ за пользователя.');
     } finally {
         if (connection) connection.release();
     }
@@ -1568,7 +1780,8 @@ export const editOrder = async (req, res) => {
 
 export const updateOrder = async (req, res) => {
     let connection;
-    const { good, quantity, link, arrival_date } = req.body;
+    const { good, quantity, arrival_date } = req.body;
+    const link = normalizeUrl(req.body.link);
     const price = normalizePrice(req.body.price);
     try {
         connection = await pool.getConnection();

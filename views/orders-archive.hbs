@@ -47,7 +47,12 @@
     <tbody>
       {{#each orders}}
       <tr>
-        <td><a href="/dashboard/vieworder/{{this.owner_type}}/{{this.owner_ref}}?scope=closed">{{this.owner_label}}</a></td>
+        <td>
+          <a href="/dashboard/vieworder/{{this.owner_type}}/{{this.owner_ref}}?scope=closed">{{this.owner_label}}</a>
+          {{#if this.created_by_admin}}
+            <div class="text-muted small">создал: {{this.created_by_label}}</div>
+          {{/if}}
+        </td>
         <td>{{this.good}}</td>
         <td>{{this.quantity}}</td>
         <td>{{this.price_label}} руб.</td>

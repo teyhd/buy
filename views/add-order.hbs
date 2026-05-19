@@ -1,8 +1,8 @@
 <div class="page-header text-center">
-  <h2>Оформить новый заказ</h2>
+  <h2>{{pageTitle}}</h2>
   <nav aria-label="breadcrumb">
     <ol class="breadcrumb justify-content-center">
-      <li class="breadcrumb-item"><a href="/myorders">Мои заказы</a></li>
+      <li class="breadcrumb-item"><a href="{{breadcrumbRootHref}}">{{breadcrumbRootText}}</a></li>
       <li class="breadcrumb-item active" aria-current="page">Новый заказ</li>
     </ol>
   </nav>
@@ -10,7 +10,40 @@
 
 {{> notice}}
 
-<form action="/myorders/addorder" class="row g-3 needs-validation" method="POST" novalidate>
+{{#if adminOnBehalf}}
+<div class="order-form mx-auto mb-3">
+  <form class="row g-2 align-items-end" method="GET" action="/manageorders/addorder" novalidate>
+    <div class="col-12 col-md">
+      <label class="form-label" for="owner-search">Поиск заказчика в SSO</label>
+      <input class="form-control" id="owner-search" type="search" name="owner_q" value="{{ownerSearch}}" placeholder="Имя, nickname или msgnickname">
+    </div>
+    <div class="col-12 col-md-auto d-flex gap-2">
+      <button class="btn btn-outline-dark" type="submit">Найти</button>
+      <a class="btn btn-outline-secondary" href="/manageorders/addorder">Сбросить</a>
+    </div>
+  </form>
+</div>
+{{/if}}
+
+<form action="{{formAction}}" class="row g-3 needs-validation" method="POST" novalidate>
+  {{#if adminOnBehalf}}
+  <div class="order-form mx-auto">
+    <input type="hidden" name="owner_q" value="{{ownerSearch}}">
+    <div class="form-floating mb-3">
+      <select class="form-select {{#if fieldErrors.owner_sso_id}}is-invalid{{/if}}" id="owner-sso-id" name="owner_sso_id" required>
+        <option value="">Выберите заказчика</option>
+        {{#each ownerOptions}}
+          <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+        {{/each}}
+      </select>
+      <label for="owner-sso-id">Заказчик</label>
+      {{#if fieldErrors.owner_sso_id}}<div class="invalid-feedback">{{fieldErrors.owner_sso_id}}</div>{{/if}}
+      {{#unless hasOwnerOptions}}
+        <div class="form-text">Активные пользователи с ролью buy не найдены. Измените поиск.</div>
+      {{/unless}}
+    </div>
+  </div>
+  {{/if}}
   {{> order-form}}
 </form>
 

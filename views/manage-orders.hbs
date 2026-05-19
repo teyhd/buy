@@ -5,6 +5,10 @@
       <h1>Активные заказы</h1>
       <div class="text-muted">Найдено: {{total}} · сумма: {{price_count}} руб.</div>
     </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="/myorders/addorder" class="btn btn-primary">Добавить свой заказ</a>
+      <a href="/manageorders/addorder" class="btn btn-outline-primary">Добавить за пользователя</a>
+    </div>
   </div>
 
   <form class="row g-2 align-items-end mt-3" method="GET" action="/manageorders" novalidate>
@@ -47,7 +51,12 @@
     <tbody>
       {{#each orders}}
       <tr>
-        <td><a href="/dashboard/vieworder/{{this.owner_type}}/{{this.owner_ref}}?scope=active">{{this.owner_label}}</a></td>
+        <td>
+          <a href="/dashboard/vieworder/{{this.owner_type}}/{{this.owner_ref}}?scope=active">{{this.owner_label}}</a>
+          {{#if this.created_by_admin}}
+            <div class="text-muted small">создал: {{this.created_by_label}}</div>
+          {{/if}}
+        </td>
         <td>{{this.good}}</td>
         <td>{{this.quantity}}</td>
         <td>{{this.price_label}} руб.</td>
