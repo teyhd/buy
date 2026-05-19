@@ -94,6 +94,13 @@ function isClosedStatus(status) {
     return CLOSED_STATUSES.includes(status);
 }
 
+function selectOptions(options, selected) {
+    return options.map((option) => ({
+        ...option,
+        selected: option.value === selected,
+    }));
+}
+
 function scopeOptions(selected) {
     return [
         { value: 'active', label: 'Активные', selected: selected === 'active' },
@@ -124,6 +131,14 @@ function formatMoney(value) {
     return amount.toLocaleString('ru-RU', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
+    });
+}
+
+function formatPercent(value) {
+    const amount = Number(value || 0);
+    return amount.toLocaleString('ru-RU', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
     });
 }
 
@@ -246,6 +261,201 @@ function buildOwnerScopeFilter(ownerColumn, ownerId, scope) {
         whereSql: `WHERE ${where.join(' AND ')}`,
         params,
     };
+}
+
+function normalizeDate(value) {
+    const text = normalizeText(value);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return '';
+    return text;
+}
+
+function normalizeNumberFilter(value) {
+    const normalized = normalizePrice(value);
+    if (normalized === null) return '';
+    const number = Number(normalized);
+    return Number.isFinite(number) && number >= 0 ? String(number) : '';
+}
+
+function normalizeAnalyticsScope(value) {
+    const scope = normalizeText(value);
+    return ['budget', 'active', 'received', 'closed', 'all'].includes(scope) ? scope : 'budget';
+}
+
+function normalizeOwnerType(value) {
+    return ['sso', 'legacy'].includes(value) ? value : '';
+}
+
+function normalizeDateField(value) {
+    return value === 'arrival_date' ? 'arrival_date' : 'creation_date';
+}
+
+function analyticsScopeOptions(selected) {
+    return selectOptions([
+        { value: 'budget', label: 'Бюджет: все кроме отменённых' },
+        { value: 'active', label: 'В работе' },
+        { value: 'received', label: 'Факт: получено' },
+        { value: 'closed', label: 'Закрытые' },
+        { value: 'all', label: 'Все заказы' },
+    ], selected);
+}
+
+function ownerTypeOptions(selected) {
+    return selectOptions([
+        { value: '', label: 'Все источники' },
+        { value: 'sso', label: 'SSO' },
+        { value: 'legacy', label: 'Legacy' },
+    ], selected);
+}
+
+function dateFieldOptions(selected) {
+    return selectOptions([
+        { value: 'creation_date', label: 'Дата заказа' },
+        { value: 'arrival_date', label: 'Желаемая доставка' },
+    ], selected);
+}
+
+function normalizeAnalyticsFilters(query) {
+    const filters = {
+        q: normalizeText(query.q || query.search),
+        scope: normalizeAnalyticsScope(query.scope),
+        status: isValidStatus(query.status) ? query.status : '',
+        date_field: normalizeDateField(query.date_field),
+        date_from: normalizeDate(query.date_from),
+        date_to: normalizeDate(query.date_to),
+        owner_type: normalizeOwnerType(query.owner_type),
+        price_from: normalizeNumberFilter(query.price_from),
+        price_to: normalizeNumberFilter(query.price_to),
+    };
+
+    if (filters.price_from && filters.price_to && Number(filters.price_from) > Number(filters.price_to)) {
+        const tmp = filters.price_from;
+        filters.price_from = filters.price_to;
+        filters.price_to = tmp;
+    }
+
+    return filters;
+}
+
+function buildAnalyticsFilter(filters) {
+    const where = [];
+    const params = [];
+    const dateColumn = filters.date_field === 'arrival_date' ? 'orders.arrival_date' : 'orders.creation_date';
+
+    if (filters.status) {
+        where.push('orders.status = ?');
+        params.push(filters.status);
+    } else if (filters.scope === 'budget') {
+        where.push('orders.status != ?');
+        params.push(ORDER_STATUS.CANCELLED);
+    } else if (filters.scope === 'active') {
+        where.push('orders.status NOT IN (?, ?)');
+        params.push(...CLOSED_STATUSES);
+    } else if (filters.scope === 'received') {
+        where.push('orders.status = ?');
+        params.push(ORDER_STATUS.RECEIVED);
+    } else if (filters.scope === 'closed') {
+        where.push('orders.status IN (?, ?)');
+        params.push(...CLOSED_STATUSES);
+    }
+
+    if (filters.date_from) {
+        where.push(`DATE(${dateColumn}) >= ?`);
+        params.push(filters.date_from);
+    }
+    if (filters.date_to) {
+        where.push(`DATE(${dateColumn}) <= ?`);
+        params.push(filters.date_to);
+    }
+    if (filters.owner_type === 'sso') {
+        where.push('orders.sso_author_id IS NOT NULL');
+    } else if (filters.owner_type === 'legacy') {
+        where.push('orders.author_id IS NOT NULL');
+    }
+    if (filters.price_from) {
+        where.push('orders.price >= ?');
+        params.push(filters.price_from);
+    }
+    if (filters.price_to) {
+        where.push('orders.price <= ?');
+        params.push(filters.price_to);
+    }
+    if (filters.q) {
+        const like = `%${filters.q}%`;
+        where.push(`(orders.good LIKE ? OR orders.link LIKE ? OR ${OWNER_LABEL_SQL} LIKE ?)`);
+        params.push(like, like, like);
+    }
+
+    return {
+        dateColumn,
+        whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '',
+        params,
+    };
+}
+
+function statusOrder(status) {
+    const index = ALL_STATUSES.indexOf(status);
+    return index === -1 ? ALL_STATUSES.length : index;
+}
+
+function attachAnalyticsAmountUi(row, totalAmount = 0) {
+    const amount = Number(row.amount || 0);
+    return {
+        ...row,
+        amount_label: formatMoney(amount),
+        avg_label: formatMoney(row.avg_amount),
+        share_label: totalAmount > 0 ? formatPercent((amount / totalAmount) * 100) : '0,0',
+        status_class: STATUS_CLASS[row.status] || 'secondary',
+    };
+}
+
+function analyticsFilterQuery(filters) {
+    return {
+        q: filters.q,
+        scope: filters.scope,
+        status: filters.status,
+        date_field: filters.date_field,
+        date_from: filters.date_from,
+        date_to: filters.date_to,
+        owner_type: filters.owner_type,
+        price_from: filters.price_from,
+        price_to: filters.price_to,
+    };
+}
+
+function csvValue(value) {
+    const text = String(value ?? '');
+    return `"${text.replace(/"/g, '""')}"`;
+}
+
+function analyticsCsv(rows) {
+    const header = [
+        'ID',
+        'Дата заказа',
+        'Желаемая доставка',
+        'Автор',
+        'Источник',
+        'Товар',
+        'Количество',
+        'Стоимость',
+        'Статус',
+        'Ссылка',
+    ];
+    const lines = [header.map(csvValue).join(';')];
+    rows.forEach((row) => {
+        lines.push([
+            row.id,
+            row.creation_date ? new Date(row.creation_date).toISOString().slice(0, 10) : '',
+            row.arrival_date ? new Date(row.arrival_date).toISOString().slice(0, 10) : '',
+            row.owner_label,
+            row.owner_type === 'sso' ? 'SSO' : 'legacy',
+            row.good,
+            row.quantity,
+            row.price,
+            row.status,
+            row.link,
+        ].map(csvValue).join(';'));
+    });
+    return `\uFEFF${lines.join('\n')}`;
 }
 
 function renderError(res, req, status, heading, message) {
@@ -639,6 +849,183 @@ export const manageOrders = async (req, res) => {
         console.log(err);
         mlog(err);
         renderError(res, req, 500, 'Ошибка сервера', 'Не удалось загрузить активные заказы.');
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+export const orderAnalytics = async (req, res) => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const filters = normalizeAnalyticsFilters(req.query);
+        const query = analyticsFilterQuery(filters);
+        const filter = buildAnalyticsFilter(filters);
+        const totalQueryParams = filter.params;
+
+        const [summaryRows] = await connection.query(
+            `SELECT
+                COUNT(*) AS total_orders,
+                COALESCE(SUM(orders.price), 0) AS total_amount,
+                COALESCE(SUM(CASE WHEN orders.status != ? THEN orders.price ELSE 0 END), 0) AS budget_amount,
+                COALESCE(SUM(CASE WHEN orders.status NOT IN (?, ?) THEN orders.price ELSE 0 END), 0) AS active_amount,
+                COALESCE(SUM(CASE WHEN orders.status = ? THEN orders.price ELSE 0 END), 0) AS fact_amount,
+                COALESCE(SUM(CASE WHEN orders.status = ? THEN orders.price ELSE 0 END), 0) AS pending_amount,
+                COALESCE(SUM(CASE WHEN orders.status = ? THEN orders.price ELSE 0 END), 0) AS cancelled_amount,
+                COALESCE(AVG(orders.price), 0) AS avg_amount
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}`,
+            [
+                ORDER_STATUS.CANCELLED,
+                ...CLOSED_STATUSES,
+                ORDER_STATUS.RECEIVED,
+                ORDER_STATUS.PENDING,
+                ORDER_STATUS.CANCELLED,
+                ...totalQueryParams,
+            ]
+        );
+        const summaryRow = summaryRows[0] || {};
+        const totalAmount = Number(summaryRow.total_amount || 0);
+
+        const [statusRowsRaw] = await connection.query(
+            `SELECT orders.status, COUNT(*) AS orders_count, COALESCE(SUM(orders.price), 0) AS amount, COALESCE(AVG(orders.price), 0) AS avg_amount
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}
+             GROUP BY orders.status`,
+            filter.params
+        );
+        const statusRows = statusRowsRaw
+            .sort((a, b) => statusOrder(a.status) - statusOrder(b.status))
+            .map((row) => attachAnalyticsAmountUi(row, totalAmount));
+
+        const [monthRowsRaw] = await connection.query(
+            `SELECT COALESCE(DATE_FORMAT(${filter.dateColumn}, '%Y-%m'), 'Без даты') AS period,
+                COUNT(*) AS orders_count,
+                COALESCE(SUM(orders.price), 0) AS amount,
+                COALESCE(AVG(orders.price), 0) AS avg_amount
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}
+             GROUP BY period
+             ORDER BY period DESC
+             LIMIT 24`,
+            filter.params
+        );
+        const monthRows = monthRowsRaw.map((row) => attachAnalyticsAmountUi(row, totalAmount));
+
+        const [ownerRowsRaw] = await connection.query(
+            `SELECT ${OWNER_TYPE_SQL} AS owner_type,
+                ${OWNER_REF_SQL} AS owner_ref,
+                ${OWNER_LABEL_SQL} AS owner_label,
+                COUNT(*) AS orders_count,
+                COALESCE(SUM(orders.price), 0) AS amount,
+                COALESCE(SUM(CASE WHEN orders.status NOT IN (?, ?) THEN orders.price ELSE 0 END), 0) AS active_amount,
+                COALESCE(SUM(CASE WHEN orders.status = ? THEN orders.price ELSE 0 END), 0) AS fact_amount,
+                COALESCE(AVG(orders.price), 0) AS avg_amount
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}
+             GROUP BY owner_type, owner_ref, owner_label
+             ORDER BY amount DESC
+             LIMIT 15`,
+            [...CLOSED_STATUSES, ORDER_STATUS.RECEIVED, ...filter.params]
+        );
+        const ownerRows = ownerRowsRaw.map((row) => ({
+            ...attachAnalyticsAmountUi(row, totalAmount),
+            source_label: row.owner_type === 'sso' ? 'SSO' : 'legacy',
+            owner_link: `/dashboard/vieworder/${row.owner_type}/${row.owner_ref}?scope=all`,
+            active_amount_label: formatMoney(row.active_amount),
+            fact_amount_label: formatMoney(row.fact_amount),
+        }));
+
+        const [productRowsRaw] = await connection.query(
+            `SELECT orders.good,
+                COUNT(*) AS orders_count,
+                COALESCE(SUM(orders.quantity), 0) AS quantity_count,
+                COALESCE(SUM(orders.price), 0) AS amount,
+                COALESCE(AVG(orders.price), 0) AS avg_amount
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}
+             GROUP BY orders.good
+             ORDER BY amount DESC
+             LIMIT 15`,
+            filter.params
+        );
+        const productRows = productRowsRaw.map((row) => attachAnalyticsAmountUi(row, totalAmount));
+
+        const [recentRows] = await connection.query(
+            `SELECT ${ORDER_OWNER_SELECT}
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}
+             ORDER BY ${filter.dateColumn} DESC, orders.id DESC
+             LIMIT 50`,
+            filter.params
+        );
+
+        const summary = {
+            total_orders: Number(summaryRow.total_orders || 0),
+            total_amount_label: formatMoney(summaryRow.total_amount),
+            budget_amount_label: formatMoney(summaryRow.budget_amount),
+            active_amount_label: formatMoney(summaryRow.active_amount),
+            fact_amount_label: formatMoney(summaryRow.fact_amount),
+            pending_amount_label: formatMoney(summaryRow.pending_amount),
+            cancelled_amount_label: formatMoney(summaryRow.cancelled_amount),
+            avg_amount_label: formatMoney(summaryRow.avg_amount),
+        };
+
+        res.render('analytics', {
+            title: 'Аналитика заказов',
+            filters,
+            hasFilters: Boolean(filters.q || filters.status || filters.date_from || filters.date_to || filters.owner_type || filters.price_from || filters.price_to || filters.scope !== 'budget' || filters.date_field !== 'creation_date'),
+            summary,
+            statusRows,
+            monthRows,
+            ownerRows,
+            productRows,
+            recentOrders: recentRows.map(attachOrderUi),
+            hasRows: summary.total_orders > 0,
+            scopeOptions: analyticsScopeOptions(filters.scope),
+            statusOptions: statusOptions(filters.status),
+            ownerTypeOptions: ownerTypeOptions(filters.owner_type),
+            dateFieldOptions: dateFieldOptions(filters.date_field),
+            csvUrl: buildUrl('/analytics/export.csv', query, 1),
+            isAuthenticated: req.session.isAuthenticated,
+            user: req.session.user,
+        });
+    } catch (err) {
+        console.log(err);
+        mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось загрузить аналитику заказов.');
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+export const orderAnalyticsCsv = async (req, res) => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const filters = normalizeAnalyticsFilters(req.query);
+        const filter = buildAnalyticsFilter(filters);
+        const [rows] = await connection.query(
+            `SELECT ${ORDER_OWNER_SELECT}
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}
+             ORDER BY ${filter.dateColumn} DESC, orders.id DESC`,
+            filter.params
+        );
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="purchase-analytics.csv"');
+        res.send(analyticsCsv(rows));
+    } catch (err) {
+        console.log(err);
+        mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось выгрузить аналитику заказов.');
     } finally {
         if (connection) connection.release();
     }

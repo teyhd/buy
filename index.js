@@ -18,7 +18,7 @@ import { config } from 'dotenv';
 import { resolve } from 'path';
 config({ path: resolve(__dirname, '.env') });
 
-import {view,find,viewarchive,vieworder,myorders,findOrders,manageOrders,updateOrderStatus,formOrder,createOrder,editOrder,updateOrder,editOrderAdmin,updateOrderAdmin,deleteOrder,cancelOrder} from './vendor/db.js'
+import {view,find,viewarchive,vieworder,myorders,findOrders,manageOrders,orderAnalytics,orderAnalyticsCsv,updateOrderStatus,formOrder,createOrder,editOrder,updateOrder,editOrderAdmin,updateOrderAdmin,deleteOrder,cancelOrder} from './vendor/db.js'
 import { createSsoAuth } from './vendor/ssoAuth.js'
 
 const app = express();
@@ -232,6 +232,9 @@ app.get('/dashboard/:id', ensureAuthenticated, ensureAdmin, disabledUserManageme
 
 app.get('/ordersarchive', ensureAuthenticated, ensureAdmin, viewarchive);
 app.post('/ordersarchive/:id/delete', ensureAuthenticated, ensureAdmin, deleteOrder);
+
+app.get('/analytics', ensureAuthenticated, ensureAdmin, orderAnalytics);
+app.get('/analytics/export.csv', ensureAuthenticated, ensureAdmin, orderAnalyticsCsv);
 
 app.get('/manageorders', ensureAuthenticated, ensureAdmin, manageOrders);
 app.get('/manageorders/editorderadmin/:id', ensureAuthenticated, ensureAdmin, editOrderAdmin);
