@@ -1,0 +1,77 @@
+<div class="row" style="padding-top: 80px;">
+{{#if removedMessage}}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+{{removedMessage}}
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{{/if}}
+
+
+    <div class="col-12"><h1>Мои заказы</h1></div>
+    <div class="col-12 d-flex justify-content-start align-items-center">
+        <a href="/myorders/addorder" type="button" class="btn btn-primary me-2">Добавить</a>
+        <form class="d-flex" method="POST" action="/myorders" novalidate>
+            <input class="form-control me-2" type="search" placeholder="Найти товар..." name="search" style="width: 150px;" aria-label="Search">
+            <button class="btn btn-outline-dark" type="submit">Поиск</button>
+        </form>
+    </div>
+</div>
+
+<table class="table table-boarded">
+  <thead class="thead-dark">
+    <tr>
+      <th scope="col">Название</th>
+      <th scope="col">Количество</th>
+      <th scope="col">Стоимость</th>
+      <th scope="col">Ссылка</th>
+      <th scope="col">Дата оформления заказа</th>
+      <th scope="col">Желаемая дата доставки</th>
+      <th scope="col">Статус</th>
+      <th scope="col" class="text-end">Действия</th>
+    </tr>
+  </thead>
+  <tbody>
+
+    {{#each rows}}
+    <tr>
+      <td>{{this.good}}</td>
+      <td>{{this.quantity}}</td>
+      <td>{{this.price}} руб.</td>
+      <td><a href="{{this.link}}">{{this.link}}</a></td>
+      <td>{{formatDate this.creation_date}}</td>
+      <td>{{formatDate this.arrival_date}}</td>
+      <td>{{this.status}}</td>
+      <td class="text-end">
+        <a href="/myorders/editorder/{{this.id}}" type="button" class="btn btn-light btn-small"><i class="bi bi-pencil"></i>Изменить</a>
+      </td>
+    </tr>
+    {{/each}}
+  </tbody>
+</table>
+<div class="pagination center">
+  {{#if prevPage}}
+    <a href="/myorders?page={{prevPage}}">«</a>
+  {{/if}}
+    {{#each pages}}
+        {{#if isCurrent}}
+            <a class="active" href="/myorders?page={{number}}">{{number}}</a>
+        {{else}}
+            <a href="/myorders?page={{number}}">{{number}}</a>
+        {{/if}}
+    {{/each}}
+  {{#if nextPage}}
+    <a href="/myorders?page={{nextPage}}">»</a>
+  {{/if}}
+</div>
+
+<div id="snackbar">{{alert}}</div>
+
+<script src="/javascript/snackbar.js"></script>
+<script>
+  if ("{{alert}}") {
+    var message = "{{alert}}";
+    if (message !== undefined && message !== null) {
+      snackBAR(message);
+    }
+  }
+</script>

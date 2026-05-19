@@ -1,0 +1,70 @@
+<div class="row" style="padding-top: 80px;">
+    <div class="col-12"><h1>База данных</h1></div>
+    <div class="col-12 d-flex justify-content-start align-items-center">
+        <a href="/dashboard/adduser" type="button" class="btn btn-primary me-2">Добавить</a>
+        <form class="d-flex" method="POST" action="/dashboard" novalidate>
+            <input class="form-control me-2" type="search" placeholder="Фамилия" name="search" style="width: 150px;" aria-label="Search">
+            <button class="btn btn-outline-dark" type="submit">Найти</button>
+        </form>
+    </div>
+</div>
+
+<table class="table table-boarded">
+  <thead class="thead-dark">
+    <tr>
+      <th scope="col">id</th>
+      <th scope="col">Логин</th>
+      <th scope="col">Фамилия</th>
+      <th scope="col">Имя</th>
+      <th scope="col">Отчество</th>
+      <th scope="col">Активные заказы</th>
+      <th scope="col" class="text-end">Действия</th>
+    </tr>
+  </thead>
+  <tbody>
+
+    {{#each rows}}
+    <tr>
+      <th scope="row">{{this.id}}</th>
+      <td>{{this.email}}</td>
+      <td>{{this.surname}}</td>
+      <td>{{this.name}}</td>
+      <td>{{this.patname}}</td>
+      <td>{{this.order_count}}</td>
+      <td class="text-end">
+        <a href="/dashboard/vieworder/{{this.id}}" type="button" class="btn btn-light btn-small"><i class="bi bi-eye"></i>Заказы</a>
+        <a href="/dashboard/edituser/{{this.id}}" type="button" class="btn btn-light btn-small"><i class="bi bi-pencil"></i>Изменить</a>
+        <a href="/dashboard/{{this.id}}" type="button" class="btn btn-light btn-small"><i class="bi bi-person-x"></i>Удалить</a>
+      </td>
+    </tr>
+
+    {{/each}}
+  </tbody>
+</table>
+<div class="pagination center">
+  {{#if prevPage}}
+    <a href="/dashboard?page={{prevPage}}">«</a>
+  {{/if}}
+    {{#each pages}}
+        {{#if isCurrent}}
+            <a class="active" href="/dashboard?page={{number}}">{{number}}</a>
+        {{else}}
+            <a href="/dashboard?page={{number}}">{{number}}</a>
+        {{/if}}
+    {{/each}}
+  {{#if nextPage}}
+    <a href="/dashboard?page={{nextPage}}">»</a>
+  {{/if}}
+</div>
+
+<div id="snackbar">{{alert}}</div>
+<script src="/javascript/snackbar.js"></script>
+<script>
+  var message = "{{alert}}";
+  if (!message) {
+    message = new URL(window.location.href).searchParams.get('error');
+  }
+  if (message !== undefined && message !== null) {
+    snackBAR(message);
+  }
+</script>

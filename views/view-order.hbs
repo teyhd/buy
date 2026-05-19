@@ -1,0 +1,77 @@
+<div class="row" style="padding-top: 80px;">
+     {{#if error}}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        {{error}}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {{/if}}
+    {{#if removedMessage}}
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        {{removedMessage}}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {{/if}}
+</div>
+<div class="view-user p-5">
+  {{#with viewedUser}}
+  <div>
+    <div class="col text-center">
+      <h3>{{this.surname}} {{this.name}} {{this.patname}}</h3>
+    </div>
+  </div>
+  <nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/dashboard">Панель управления</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Заказчик</li>
+  </ol>
+</nav>
+  {{/with}}
+  <div class="row" style="margin-bottom: -45px;">
+    <div class="col">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Логин</th>
+            <th scope="col">Название товара</th>
+            <th scope="col">Количество</th>
+            <th scope="col">Стоимость</th>
+            <th scope="col">Ссылка</th>
+            <th scope="col">Дата оформления заказа</th>
+            <th scope="col">Желаемая дата доставки</th>
+            <th scope="col">Статус заказа</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each orders}}
+          <tr>
+            <th scope="row">{{../viewedUser.email}}</th>
+            <td>{{this.good}}</td>
+            <td>{{this.quantity}}</td>
+            <td>{{this.price}} руб.</td>
+            <td><a href="{{this.link}}">{{this.link}}</a></td>
+            <td>{{formatDate this.creation_date}}</td>
+            <td>{{formatDate this.arrival_date}}</td>
+            <td>{{this.status}}</td>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="pagination center">
+  {{#if prevPage}}
+    <a href="/dashboard/vieworder/{{../viewedUser.id}}?page={{prevPage}}">«</a>
+  {{/if}}
+    {{#each pages}}
+        {{#if isCurrent}}
+            <a class="active" href="/dashboard/vieworder/{{../viewedUser.id}}?page={{number}}">{{number}}</a>
+        {{else}}
+            <a href="/dashboard/vieworder/{{../viewedUser.id}}?page={{number}}">{{number}}</a>
+        {{/if}}
+    {{/each}}
+  {{#if nextPage}}
+    <a href="/dashboard/vieworder/{{../viewedUser.id}}?page={{nextPage}}">»</a>
+  {{/if}}
+</div>
+

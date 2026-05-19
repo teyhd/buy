@@ -1,0 +1,73 @@
+/*pagination*/
+
+/* links for splitting at pages */
+.pagination a {
+    color: black;
+    display: inline-block;
+    padding: 8px 16px;
+    text-decoration: none;
+    transition: background-color .3s;
+}
+  
+/* active link */
+.pagination a.active {
+    background-color: rgb(33, 37, 41);
+    color: white;
+}
+  
+/* hovering the link */
+.pagination a:hover:not(.active) {background-color: #ddd;}
+
+/* centering */
+.pagination.center {
+    display: flex;
+    justify-content: center;
+}
+
+
+/*snack-bar*/
+
+#snackbar {
+    visibility: hidden; /* Скрыто по умолчанию. Видимый по щелчку мыши */
+    min-width: 250px; /* Установите минимальную ширину по умолчанию */
+    background-color: #333; /* Черный цвет фона */
+    color: #fff; /* Белый цвет текста */
+    text-align: center; /* Центрированный текст */
+    border-radius: 2px; /* Округленные границы */
+    padding: 16px; /* Отступ */
+    position: fixed; /* Сядьте на верхнюю часть экрана */
+    z-index: 1; /* Добавить z-индекс при необходимости */
+    left: 50%; /* Центр, снэк-бар */
+    bottom: 30px; /* 30 пикселей снизу */
+    transform: translateX(-50%); /* Смещение на 50% влево */
+}
+
+/* Показывать снэк-бар при нажатии на кнопку (Класс добавлен с помощью JavaScript) */
+#snackbar.show {
+    visibility: visible; /* Покажите снэк-бар */
+    /* Добавить анимацию: Возьмите 0,5 секунды, чтобы исчезать и выходить из закусочной.
+    Однако задержите процесс затухания на 2,5 секунды */
+    -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s;
+    animation: fadein 0.5s, fadeout 0.5s 2.5s;
+}
+
+/* Анимация, чтобы исчезать снэк-бар в и из */
+@-webkit-keyframes fadein {
+    from {bottom: 0; opacity: 0;}
+    to {bottom: 30px; opacity: 1;}
+}
+
+@keyframes fadein {
+    from {bottom: 0; opacity: 0;}
+    to {bottom: 30px; opacity: 1;}
+}
+
+@-webkit-keyframes fadeout {
+    from {bottom: 30px; opacity: 1;}
+    to {bottom: 0; opacity: 0;}
+}
+
+@keyframes fadeout {
+    from {bottom: 30px; opacity: 1;}
+    to {bottom: 0; opacity: 0;}
+}

@@ -1,0 +1,102 @@
+<div class="container" style="padding-top: 80px;">
+  {{#if removedMessage}}
+  <div class="alert alert-success alert-dismissible fade show" role="alert">
+    {{removedMessage}}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+  {{/if}}
+  <div class="row align-items-center">
+    <div class="col-md-6"><h1>Активные заказы</h1></div>
+    <div class="col-md-6 d-flex justify-content-end">
+      <h5>Итого:⠀{{this.price_count}} руб.</h5>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-12">
+      <form class="d-flex" method="GET" action="/manageorders" novalidate>
+  <select class="form-control me-2" name="search" aria-label="Search">
+    <option value="">Все заказы</option>
+    <option value="На рассмотрении" {{#if (eq searchTerm "На рассмотрении")}}selected{{/if}}>На рассмотрении</option>
+    <option value="Закупаем" {{#if (eq searchTerm "Закупаем")}}selected{{/if}}>Закупаем</option>
+    <option value="Доставляем" {{#if (eq searchTerm "Доставляем")}}selected{{/if}}>Доставляем</option>
+    <option value="Ожидает получения" {{#if (eq searchTerm "Ожидает получения")}}selected{{/if}}>Ожидает получения</option>
+  </select>
+  <button class="btn btn-outline-dark" type="submit">Найти</button>
+</form>
+
+
+
+    </div>
+  </div>
+
+  <div id="snackbar">{{alert}}</div>
+
+<table class="table table-boarded">
+  <thead class="thead-dark">
+    <tr>
+      <th scope="col">Автор</th>
+      <th scope="col">Товар</th>
+      <th scope="col">Количество</th>
+      <th scope="col">Стоимость</th>
+      <th scope="col">Ссылка на товар</th>
+      <th scope="col">Дата оформления заказа</th>
+      <th scope="col">Желаемая дата доставки</th>
+      <th scope="col" class="text-end"></th>
+      <th scope="col">Статус</th>
+    </tr>
+  </thead>
+<tbody>
+    {{#each orders}}<tr>
+        <td><a href="/dashboard/vieworder/{{this.author_id}}">{{this.email}}</a></td>
+        <td>{{this.good}}</td>
+        <td>{{this.quantity}}</td>
+        <td>{{this.price}} руб.</td>
+        <td><a href="{{this.link}}">{{this.link}}</a></td>
+        <td>{{formatDate this.creation_date}}</td>
+        <td>{{formatDate this.arrival_date}}</td>
+        <td class="text-end">
+            <a href="/manageorders/editorderadmin/{{this.id}}" type="button" class="btn btn-light btn-small"><i class="bi bi-pencil"></i>Изменить данные</a>
+        </td>
+        <td>
+    <form action="/updateOrderStatus/{{this.id}}" method="POST">
+        <div class="form-floating" style="width: 150px;">
+            <select class="form-control" id="floatingSelect" name="status" style="padding: 0;">
+                <option value="На рассмотрении" {{#if (eq this.status "На рассмотрении")}}selected{{/if}}>На рассмотрении</option>
+                <option value="Закупаем" {{#if (eq this.status "Закупаем")}}selected{{/if}}>Закупаем</option>
+                <option value="Доставляем" {{#if (eq this.status "Доставляем")}}selected{{/if}}>Доставляем</option>
+                <option value="Ожидает получения" {{#if (eq this.status "Ожидает получения")}}selected{{/if}}>Ожидает получения</option>
+                <option value="Получен" {{#if (eq this.status "Получен")}}selected{{/if}}>Получен</option>
+            </select>
+            <button type="submit" class="btn btn-light btn-small"><i class="bi bi-pencil"></i> Обновить</button>
+        </div>
+    </form>
+</td>
+
+    {{/each}}
+</tbody>
+</table>
+<div class="pagination center">
+  {{#if prevPage}}
+    <a href="/manageorders?page={{prevPage}}">«</a>
+  {{/if}}
+    {{#each pages}}
+        {{#if isCurrent}}
+            <a class="active" href="/manageorders?page={{number}}">{{number}}</a>
+        {{else}}
+            <a href="/manageorders?page={{number}}">{{number}}</a>
+        {{/if}}
+    {{/each}}
+  {{#if nextPage}}
+    <a href="/manageorders?page={{nextPage}}">»</a>
+  {{/if}}
+</div>
+
+<script src="/javascript/snackbar.js"></script>
+<script>
+  if ("{{alert}}") {
+    var message = "{{alert}}";
+    if (message !== undefined && message !== null) {
+      snackBAR(message);
+    }
+  }
+</script>

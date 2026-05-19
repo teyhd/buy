@@ -1,0 +1,50 @@
+<div class="container mt-5 pt-3">
+  {{#if removedMessage}}
+  <div class="alert alert-success alert-dismissible fade show" role="alert">
+    {{removedMessage}}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+  {{/if}}
+  <div class="row">
+    <div class="col-12"><h1>Архив заказов</h1></div>
+  </div>
+
+<table class="table table-boarded">
+  <thead class="thead-dark">
+    <tr>
+      <th scope="col">Автор</th>
+      <th scope="col">Товар</th>
+      <th scope="col">Количество</th>
+      <th scope="col">Стоимость</th>
+      <th scope="col">Ссылка на товар</th>
+      <th scope="col">Дата оформления заказа</th>
+      <th scope="col">Желаемая дата доставки</th>
+    </tr>
+  </thead>
+<tbody>
+    {{#each orders}}<tr>
+        <td><a href="/dashboard/vieworder/{{this.author_id}}">{{this.email}}</a></td>
+        <td>{{this.good}}</td>
+        <td>{{this.quantity}}</td>
+        <td>{{this.price}} руб.</td>
+        <td><a href="{{this.link}}">{{this.link}}</a></td>
+        <td>{{formatDate this.creation_date}}</td>
+        <td>{{formatDate this.arrival_date}}</td>
+    {{/each}}
+</tbody>
+</table>
+<div class="pagination center">
+  {{#if prevPage}}
+    <a href="/ordersarchive?page={{prevPage}}">«</a>
+  {{/if}}
+    {{#each pages}}
+        {{#if isCurrent}}
+            <a class="active" href="/ordersarchive?page={{number}}">{{number}}</a>
+        {{else}}
+            <a href="/ordersarchive?page={{number}}">{{number}}</a>
+        {{/if}}
+    {{/each}}
+  {{#if nextPage}}
+    <a href="/ordersarchive?page={{nextPage}}">»</a>
+  {{/if}}
+</div>
