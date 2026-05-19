@@ -38,7 +38,7 @@ CREATE TABLE `orders` (
   `sso_author_id` int(11) DEFAULT NULL,
   `status` enum('На рассмотрении','Закупаем','Доставляем','Ожидает получения','Получен','Отменен') DEFAULT NULL,
   `price` decimal(10,2) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Демо-данные таблицы `orders` удалены перед публикацией в git.
@@ -55,13 +55,13 @@ CREATE TABLE `users` (
   `name` varchar(255) NOT NULL,
   `surname` varchar(255) NOT NULL,
   `patname` varchar(255) NOT NULL,
-  `location` varchar(255) NOT NULL,
+  `location` varchar(255) NOT NULL DEFAULT '0',
   `email` varchar(255) NOT NULL,
   `password` varchar(255) NOT NULL,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   `is_admin` tinyint(1) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Демо-данные таблицы `users` удалены перед публикацией в git.
@@ -77,7 +77,14 @@ CREATE TABLE `users` (
 ALTER TABLE `orders`
   ADD PRIMARY KEY (`id`),
   ADD KEY `author_id` (`author_id`),
-  ADD KEY `idx_orders_sso_author_id` (`sso_author_id`);
+  ADD KEY `idx_orders_sso_author_id` (`sso_author_id`),
+  ADD KEY `idx_orders_status_creation` (`status`,`creation_date`),
+  ADD KEY `idx_orders_status_arrival` (`status`,`arrival_date`),
+  ADD KEY `idx_orders_creation_date` (`creation_date`),
+  ADD KEY `idx_orders_arrival_date` (`arrival_date`),
+  ADD KEY `idx_orders_price` (`price`),
+  ADD KEY `idx_orders_sso_author_status` (`sso_author_id`,`status`),
+  ADD KEY `idx_orders_author_status` (`author_id`,`status`);
 
 --
 -- Индексы таблицы `users`
@@ -93,13 +100,13 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT для таблицы `orders`
 --
 ALTER TABLE `orders`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=45;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT для таблицы `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=101;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
 -- Ограничения внешнего ключа сохраненных таблиц

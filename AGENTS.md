@@ -29,6 +29,7 @@ This is the single source of truth for coding agents in this repository. It repl
 - Templates/frontend: Express Handlebars in `views`.
 - Static assets: `public/css`, `public/javascript`, `public/img`.
 - Data: MySQL via `mysql2/promise`.
+- Production database name: `buy` on `172.24.0.227`.
 - SQL reference/source-of-truth files are in `sql_database`.
 - Current SQL reference dump: `sql_database/purchase_service(3).sql`.
 - Main database handlers live in `vendor/db.js`.
@@ -59,6 +60,7 @@ This is the single source of truth for coding agents in this repository. It repl
 ## Data Boundaries
 - Treat `sql_database` as the schema reference for this project.
 - Main tables are `users` and `orders`.
+- Production uses the clean local schema in database `buy`; older `order` database is legacy backup data and must not be modified unless explicitly requested.
 - SSO is read-only for this service: never write to `sso.*` and never change the SSO schema from this repository.
 - Current SSO service row: `sso.srvs.name = buy`, `SSO_SERVICE_ID=12`.
 - New orders use `orders.sso_author_id` with the current `sso.users.id`.
