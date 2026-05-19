@@ -1624,7 +1624,7 @@ export const formOrderForUser = async (req, res, fieldErrors = {}, alert = null)
         const ownerRows = await loadBuySsoUsers(connection, { q: ownerSearch, selectedId: selectedOwnerId });
         const ownerOptions = ownerRows.map((row) => ({
             value: row.id,
-            label: `${ssoUserLabel(row)} · SSO #${row.id}`,
+            label: ssoUserLabel(row),
             selected: Number(row.id) === Number(selectedOwnerId),
         }));
 
