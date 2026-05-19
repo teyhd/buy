@@ -5,8 +5,7 @@ mlog(`Current directory: ${process.cwd()}`);
 import express from 'express'
 import exphbs from 'express-handlebars'
 import mysql from 'mysql2/promise';
-import passport from 'passport'
-import expressSession from 'express-session'
+import cookieParser from 'cookie-parser'
 
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -19,23 +18,17 @@ import { config } from 'dotenv';
 import { resolve } from 'path';
 config({ path: resolve(__dirname, '.env') });
 
-import {register,login,view,find,form,create,edit,update,deleteUser,viewarchive,vieworder,myorders,findOrders,manageOrders,updateOrderStatus,formOrder,createOrder,editOrder,updateOrder,editOrderAdmin,updateOrderAdmin,deleteOrder} from './vendor/db.js'
+import {view,find,viewarchive,vieworder,myorders,findOrders,manageOrders,updateOrderStatus,formOrder,createOrder,editOrder,updateOrder,editOrderAdmin,updateOrderAdmin,deleteOrder} from './vendor/db.js'
+import { createSsoAuth } from './vendor/ssoAuth.js'
 
 const app = express();
-app.use(expressSession({
-    secret: process.env.SESSION_SECRET || 'change-me-in-env',
-    resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false }
-}));
-
-app.use(passport.initialize());
-app.use(passport.session());
+app.set('trust proxy', 1);
 const port = process.env.PORT || 5000;
 
 // parsing middleware
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
+app.use(cookieParser());
 
 import { body, validationResult } from 'express-validator';
 
@@ -86,20 +79,27 @@ export const pool = mysql.createPool({
     database        : process.env.database
 });
 
+const ssoAuth = createSsoAuth({ pool });
+app.use(ssoAuth.attachSession);
+
 //connect to db
-pool.getConnection((err, connection) => {
-    if(err) {
-        console.error('Error connecting to the database: ', err);
-        mlog('Error connecting to the database: ', err);
-        return;
+async function checkDbConnection() {
+    try {
+        const connection = await pool.getConnection();
+        console.log('Connected as ID' + connection.threadId);
+        mlog('Connected as ID' + connection.threadId);
+        connection.release();
+    } catch (err) {
+        console.error('Error connecting to the database: ', err.message);
+        mlog('Error connecting to the database: ', err.message);
     }
-    console.log('Connected as ID' + connection.threadId);
-    mlog('Connected as ID' + connection.threadId);
-});
+}
+checkDbConnection();
 
 //is auth
 app.use((req, res, next) => {
     res.locals.isAuthenticated = req.session.user ? true : false;
+    res.locals.user = req.session.user;
     console.log('isAuthenticated:', res.locals.isAuthenticated);
     mlog('isAuthenticated:', res.locals.isAuthenticated);
     next();
@@ -109,7 +109,8 @@ export function ensureAuthenticated(req, res, next) {
     if (req.session && req.session.user) {
         return next();
     }
-    res.redirect('/login');
+    const returnTo = encodeURIComponent(req.originalUrl || '/');
+    res.redirect(`/api/auth/login?return_to=${returnTo}`);
 }
 
 export function ensureAdmin(req, res, next) {
@@ -128,18 +129,16 @@ export function ensureUser(req, res, next) {
     res.redirect('/not-authorized');
 }
 
-//function for redirecting when somebody tries to access register or login pages while being authorized
-function redirectIfAuthenticated(req, res, next) {
-    if (req.session && req.session.user) {
-        res.redirect('/');
-    } else {
-        next();
-    }
+function disabledUserManagement(req, res) {
+    res.redirect('/dashboard?error=' + encodeURIComponent('Локальное управление пользователями отключено. Пользователи и роли управляются через SSO.'));
 }
 
 // routes
 
 app.get('/', (req, res) => {
+    if (req.session.user) {
+        return res.redirect(ssoAuth.landingFor(req.session.user));
+    }
     res.render('welcome', { title: 'Главная страница', user: req.session.user });
 });
 
@@ -147,161 +146,30 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', service: 'purchase-service' });
 });
 
-app.get('/register', redirectIfAuthenticated, (req, res) => {
-    res.render('register', { title: 'Регистрация' });
+app.get('/not-authorized', (_req, res) => {
+    res.status(403).send('Нет доступа к сервису buy. Проверьте роль в SSO.');
 });
 
-app.post('/register',
-    body('name').matches(/^[А-Яа-яA-Za-z]+$/).withMessage('Имя должно содержать только буквы!'),
-    body('surname').matches(/^[А-Яа-яA-Za-z]+$/).withMessage('Фамилия должна содержать только буквы!'),
-    body('patname').matches(/^[А-Яа-яA-Za-z]+$/).withMessage('Отчество должно содержать только буквы!'),
-    body('email').isLength({ min: 6, max: 15 }).withMessage('Логин должен содержать от 6 до 15 символов!'),
-    body('password').isLength({ min: 6, max: 30 }).withMessage('Пароль должен содержать от 6 до 30 символов!'),
-    async (req, res) => {
-        const errors = validationResult(req);
+app.get('/api/auth/login', ssoAuth.login);
+app.get('/api/cb', ssoAuth.callback);
+app.get('/api/auth/logout', ssoAuth.logout);
+app.get('/api/me', ssoAuth.me);
 
-        if (!errors.isEmpty()) {
-            const errorMsg = errors.array().map(e => e.msg).join(' ');
-
-            return res.render('register', {
-                title: 'Регистрация',
-                alert: errorMsg
-            });
-        }
-
-        try {
-            await register(req, res);
-        } catch (err) {
-            console.log(err);
-            mlog(err);
-            res.status(500).render('register', {
-                title: 'Регистрация',
-                alert: 'Ошибка сервера.'
-            });
-        }
-    });
-
-
-
-app.get('/login', redirectIfAuthenticated, (req, res) => {
-    res.render('login', { title: 'Вход' });
-});
-
-app.post('/login',
-    body('password').isLength({ min: 6 }).withMessage('Пароль должен содержать не менее 6 символов!'),
-    (req, res) => {
-        const errors = validationResult(req);
-
-        if (!errors.isEmpty()) {
-            const errorMsg = errors.array().map(e => e.msg).join(' ');
-
-            return res.render('login', {
-                title: 'Вход',
-                alert: errorMsg
-            });
-        }
-
-        login(req, res);
-    });
-
-
-app.get('/logout', (req, res) => {
-    req.session.destroy(function(err) {
-        if (err) {
-            console.log(err);
-            mlog(err);
-        } else {
-            res.redirect('/login');
-        }
-    });
-});
+app.get('/login', ssoAuth.login);
+app.post('/login', (_req, res) => res.status(410).send('Local password login is disabled. Use SSO.'));
+app.get('/register', (_req, res) => res.redirect('/api/auth/login'));
+app.post('/register', (_req, res) => res.status(410).send('Local registration is disabled. Users are managed in SSO.'));
+app.get('/logout', ssoAuth.logout);
 
 app.get('/dashboard', ensureAuthenticated, ensureAdmin, view);
 app.post('/dashboard', ensureAuthenticated, ensureAdmin, find);
-app.get('/dashboard/adduser', ensureAuthenticated, ensureAdmin, form);
-app.post('/dashboard/adduser', 
-    ensureAuthenticated, 
-    ensureAdmin,
-    body('name').matches(/^[А-Яа-яA-Za-z]+$/).withMessage('Имя должно содержать только буквы!'),
-    body('surname').matches(/^[А-Яа-яA-Za-z]+$/).withMessage('Фамилия должна содержать только буквы!'),
-    body('patname').matches(/^[А-Яа-яA-Za-z]+$/).withMessage('Отчество должно содержать только буквы!'),
-    body('email').isLength({ min: 6, max: 15 }).withMessage('Логин должен содержать от 6 до 15 символов!'),
-    body('password').isLength({ min: 6, max: 30 }).withMessage('Пароль должен содержать от 6 до 30 символов!'),
-    async (req, res) => {
-        const { surname, name, patname, email, password } = req.body;
-
-        const errors = validationResult(req);
-
-        if (!errors.isEmpty()) {
-            const errorMsg = errors.array().map(e => e.msg).join(' ');
-
-            return res.render('add-user', {
-                title: 'Создание пользователя',
-                id: req.params.id,
-                alert: errorMsg,
-                isAuthenticated: req.session.isAuthenticated,
-                user: req.session.user,
-                surname, name, patname, email
-            });
-        }
-
-
-        try {
-            await create(req, res, errors);
-        } catch (err) {
-            console.log(err);
-            mlog(err);
-            res.status(500).render('add-user', {
-                title: 'Создание пользователя',
-                alert: 'Ошибка сервера.'
-            });
-        }
-    });
-
-app.get('/dashboard/edituser/:id', ensureAuthenticated, ensureAdmin, edit);
-app.post('/dashboard/edituser/:id', 
-    ensureAuthenticated, 
-    ensureAdmin,
-    body('name').matches(/^[А-Яа-яA-Za-z]+$/).withMessage('Имя должно содержать только буквы!'),
-    body('surname').matches(/^[А-Яа-яA-Za-z]+$/).withMessage('Фамилия должна содержать только буквы!'),
-    body('patname').matches(/^[А-Яа-яA-Za-z]+$/).withMessage('Отчество должно содержать только буквы!'),
-    body('email').isLength({ min: 6, max: 15 }).withMessage('Логин должен содержать от 6 до 15 символов!'),
-    body('password').isLength({ min: 6, max: 30 }).withMessage('Пароль должен содержать от 6 до 30 символов!'),
-    async (req, res) => {
-        const { surname, name, patname, email, password } = req.body;
-
-        const errors = validationResult(req);
-
-        if (!errors.isEmpty()) {
-            const errorMsg = errors.array().map(e => e.msg).join(' ');
-            
-            return res.render('edit-user', {
-                title: 'Редактирование пользователя',
-                alert: errorMsg,
-                rows: [{
-                    id: req.params.id,
-                    surname, name, patname, email, password
-                }],
-                isAuthenticated: req.session.isAuthenticated,
-                user: req.session.user
-            });
-        }
-               
-
-        try {
-            await update(req, res);
-        } catch (err) {
-            console.log(err);
-            mlog(err);
-            res.status(500).render('edit-user', {
-                title: 'Редактирование пользователя',
-                alert: 'Ошибка сервера.'
-            });
-        }
-    });
-
+app.get('/dashboard/adduser', ensureAuthenticated, ensureAdmin, disabledUserManagement);
+app.post('/dashboard/adduser', ensureAuthenticated, ensureAdmin, disabledUserManagement);
+app.get('/dashboard/edituser/:id', ensureAuthenticated, ensureAdmin, disabledUserManagement);
+app.post('/dashboard/edituser/:id', ensureAuthenticated, ensureAdmin, disabledUserManagement);
+app.get('/dashboard/vieworder/:source/:id', ensureAuthenticated, ensureAdmin, vieworder);
 app.get('/dashboard/vieworder/:id', ensureAuthenticated, ensureAdmin, vieworder);
-app.get('/dashboard/:id', ensureAuthenticated, ensureAdmin, deleteUser);
+app.get('/dashboard/:id', ensureAuthenticated, ensureAdmin, disabledUserManagement);
 
 app.get('/ordersarchive', ensureAuthenticated, ensureAdmin, viewarchive);
 

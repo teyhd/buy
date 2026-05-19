@@ -47,7 +47,7 @@
   </thead>
 <tbody>
     {{#each orders}}<tr>
-        <td><a href="/dashboard/vieworder/{{this.author_id}}">{{this.email}}</a></td>
+        <td><a href="/dashboard/vieworder/{{this.owner_type}}/{{this.owner_ref}}">{{this.owner_label}}</a></td>
         <td>{{this.good}}</td>
         <td>{{this.quantity}}</td>
         <td>{{this.price}} руб.</td>

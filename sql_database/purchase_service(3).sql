@@ -34,7 +34,8 @@ CREATE TABLE `orders` (
   `link` varchar(2048) NOT NULL,
   `creation_date` datetime DEFAULT NULL,
   `arrival_date` datetime DEFAULT NULL,
-  `author_id` bigint(20) UNSIGNED NOT NULL,
+  `author_id` bigint(20) UNSIGNED DEFAULT NULL,
+  `sso_author_id` int(11) DEFAULT NULL,
   `status` enum('На рассмотрении','Закупаем','Доставляем','Ожидает получения','Получен') DEFAULT NULL,
   `price` decimal(10,2) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
@@ -75,7 +76,8 @@ CREATE TABLE `users` (
 --
 ALTER TABLE `orders`
   ADD PRIMARY KEY (`id`),
-  ADD KEY `author_id` (`author_id`);
+  ADD KEY `author_id` (`author_id`),
+  ADD KEY `idx_orders_sso_author_id` (`sso_author_id`);
 
 --
 -- Индексы таблицы `users`
@@ -107,6 +109,10 @@ ALTER TABLE `users`
 -- Ограничения внешнего ключа таблицы `orders`
 --
 ALTER TABLE `orders`
+  ADD CONSTRAINT `orders_author_one_source_chk` CHECK (
+    (`author_id` IS NOT NULL AND `sso_author_id` IS NULL)
+    OR (`author_id` IS NULL AND `sso_author_id` IS NOT NULL)
+  ),
   ADD CONSTRAINT `orders_ibfk_1` FOREIGN KEY (`author_id`) REFERENCES `users` (`id`);
 COMMIT;
 

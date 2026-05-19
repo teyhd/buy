@@ -59,8 +59,12 @@ This is the single source of truth for coding agents in this repository. It repl
 ## Data Boundaries
 - Treat `sql_database` as the schema reference for this project.
 - Main tables are `users` and `orders`.
-- `orders.author_id` references `users.id`.
-- User role boundary is stored in `users.is_admin`.
+- SSO is read-only for this service: never write to `sso.*` and never change the SSO schema from this repository.
+- Current SSO service row: `sso.srvs.name = buy`, `SSO_SERVICE_ID=12`.
+- New orders use `orders.sso_author_id` with the current `sso.users.id`.
+- `orders.author_id` is legacy-only and references local `users.id` for old orders.
+- Local `users` is legacy-only for historical order display; do not use it for new authentication or user management.
+- User role boundary comes from JWT claim `right[]` filtered by `SSO_SERVICE_ID=12`; `role_id=5` is admin, other positive roles are regular users.
 - Order statuses are `На рассмотрении`, `Закупаем`, `Доставляем`, `Ожидает получения`, `Получен`.
 - Do not introduce schema changes without explicit user need.
 - If schema changes are required, keep SQL changes in `sql_database` unless the user asks for a migration structure.
@@ -71,9 +75,10 @@ This is the single source of truth for coding agents in this repository. It repl
 - SSH: `ssh root@platon.teyhd.ru -p 9022`.
 - SSH key is available on this workstation.
 - Host role: ANET, Nginx router for external requests.
-- Domain from provided access context: `rasp.platoniks.ru`.
-- Current project path for this repository is not verified on production; verify it before deploy.
-- Do not assume `/var/www/html/purchaise` is the Purchase Service path unless the server confirms it.
+- Domain: `buy.platoniks.ru`.
+- Current project path: `/var/www/html/purchaise`.
+- Backend/web process name: `buy`.
+- Local production health check: `curl -sS http://127.0.0.1:3012/health`.
 - Process check: `pm2 list`.
 - In non-interactive SSH sessions use:
   - `export PATH=/root/.nvm/versions/node/v22.15.0/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`
@@ -93,8 +98,8 @@ This is the single source of truth for coding agents in this repository. It repl
 - Local/runtime MySQL settings are still loaded from `.env`.
 
 ## Nginx And Autodeploy
-- Active Nginx config from provided access context: `/etc/nginx/sites-enabled/06-rasp.platoniks.ru.conf`.
-- Do not keep backup files with duplicate `server_name rasp.platoniks.ru` inside `sites-enabled`; it creates duplicate host warnings.
+- Active Nginx config: `/etc/nginx/sites-enabled/31-buy.platoniks.ru.conf`.
+- Do not keep backup files with duplicate `server_name buy.platoniks.ru` inside `sites-enabled`; it creates duplicate host warnings.
 - Keep Nginx backups in `/etc/nginx/sites-backup`.
 - For non-interactive checks, call `nginx` with the explicit PATH above or by absolute path `/usr/sbin/nginx`.
 - Purchase Service Nginx root and API proxy are not verified; inspect the active config before changing it.

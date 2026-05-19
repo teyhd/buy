@@ -61,17 +61,16 @@
 
 <div class="pagination center">
   {{#if prevPage}}
-    <a href="/dashboard/vieworder/{{../viewedUser.id}}?page={{prevPage}}">«</a>
+    <a href="/dashboard/vieworder/{{ownerSource}}/{{viewedUser.id}}?page={{prevPage}}">«</a>
   {{/if}}
     {{#each pages}}
         {{#if isCurrent}}
-            <a class="active" href="/dashboard/vieworder/{{../viewedUser.id}}?page={{number}}">{{number}}</a>
+            <a class="active" href="/dashboard/vieworder/{{../ownerSource}}/{{../viewedUser.id}}?page={{number}}">{{number}}</a>
         {{else}}
-            <a href="/dashboard/vieworder/{{../viewedUser.id}}?page={{number}}">{{number}}</a>
+            <a href="/dashboard/vieworder/{{../ownerSource}}/{{../viewedUser.id}}?page={{number}}">{{number}}</a>
         {{/if}}
     {{/each}}
   {{#if nextPage}}
-    <a href="/dashboard/vieworder/{{../viewedUser.id}}?page={{nextPage}}">»</a>
+    <a href="/dashboard/vieworder/{{ownerSource}}/{{viewedUser.id}}?page={{nextPage}}">»</a>
   {{/if}}
 </div>
-
