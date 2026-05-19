@@ -96,6 +96,20 @@ function landingFor(user) {
     return user?.is_admin ? '/manageorders' : '/myorders';
 }
 
+function normalizeReturnTo(returnTo, user) {
+    if (!returnTo || !returnTo.startsWith('/') || returnTo.startsWith('//')) {
+        return landingFor(user);
+    }
+
+    const cleanPath = returnTo.split('?')[0];
+    const authEntryPaths = new Set(['/', '/login', '/register', '/api/auth/login']);
+    if (authEntryPaths.has(cleanPath)) {
+        return landingFor(user);
+    }
+
+    return returnTo;
+}
+
 export function createSsoAuth({ pool }) {
     const config = {
         SSO_BASE_URL: process.env.SSO_BASE_URL,
@@ -257,8 +271,7 @@ export function createSsoAuth({ pool }) {
             setSessionCookie(req, res, user);
             res.clearCookie(stateCookieName, { path: '/' });
 
-            const returnTo = statePayload.returnTo && statePayload.returnTo.startsWith('/') ? statePayload.returnTo : landingFor(user);
-            return res.redirect(returnTo);
+            return res.redirect(normalizeReturnTo(statePayload.returnTo, user));
         } catch (err) {
             clearSessionCookies(res);
             return next(err);

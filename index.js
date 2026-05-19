@@ -135,11 +135,8 @@ function disabledUserManagement(req, res) {
 
 // routes
 
-app.get('/', (req, res) => {
-    if (req.session.user) {
-        return res.redirect(ssoAuth.landingFor(req.session.user));
-    }
-    res.render('welcome', { title: 'Главная страница', user: req.session.user });
+app.get('/', ensureAuthenticated, (req, res) => {
+    res.redirect(ssoAuth.landingFor(req.session.user));
 });
 
 app.get('/health', (req, res) => {
