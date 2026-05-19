@@ -61,6 +61,11 @@ const DOCUMENT_STATUS_META = {
     [DOCUMENT_STATUS.COMPLETE]: { label: 'Полный комплект', className: 'success' },
 };
 
+const SEARCH_COLLATION = 'utf8mb4_unicode_ci';
+function searchTextSql(expression) {
+    return `CONVERT(${expression} USING utf8mb4) COLLATE ${SEARCH_COLLATION}`;
+}
+
 const OWNER_LABEL_SQL = `COALESCE(
     NULLIF(sso_users.name, ''),
     NULLIF(sso_users.nickname, ''),
@@ -69,7 +74,16 @@ const OWNER_LABEL_SQL = `COALESCE(
     CONCAT('SSO #', orders.sso_author_id),
     CONCAT('Legacy #', orders.author_id)
 )`;
-const OWNER_LABEL_SEARCH_SQL = `CONVERT(${OWNER_LABEL_SQL} USING utf8mb4) COLLATE utf8mb4_unicode_ci`;
+const OWNER_LABEL_SEARCH_SQL = searchTextSql(OWNER_LABEL_SQL);
+const ORDER_GOOD_SEARCH_SQL = searchTextSql('orders.good');
+const ORDER_LINK_SEARCH_SQL = searchTextSql('orders.link');
+const ACCOUNTING_BUDGET_CATEGORY_SEARCH_SQL = searchTextSql('accounting.budget_category');
+const ACCOUNTING_COST_CENTER_SEARCH_SQL = searchTextSql('accounting.cost_center');
+const ACCOUNTING_SUPPLIER_SEARCH_SQL = searchTextSql('accounting.supplier_name');
+const ACCOUNTING_INVOICE_SEARCH_SQL = searchTextSql('accounting.invoice_number');
+const SSO_USER_NAME_SEARCH_SQL = searchTextSql('sso_users.name');
+const SSO_USER_NICKNAME_SEARCH_SQL = searchTextSql('sso_users.nickname');
+const SSO_USER_MSGNICKNAME_SEARCH_SQL = searchTextSql('sso_users.msgnickname');
 const OWNER_TYPE_SQL = `CASE WHEN orders.sso_author_id IS NULL THEN 'legacy' ELSE 'sso' END`;
 const OWNER_REF_SQL = `COALESCE(orders.sso_author_id, orders.author_id)`;
 const CREATED_BY_LABEL_SQL = `COALESCE(
@@ -318,7 +332,7 @@ function buildOrderFilter({ scope = 'active', status = '', q = '' }) {
 
     if (q) {
         const like = `%${q}%`;
-        where.push(`(orders.good LIKE ? OR orders.link LIKE ? OR ${OWNER_LABEL_SEARCH_SQL} LIKE ?)`);
+        where.push(`(${ORDER_GOOD_SEARCH_SQL} LIKE ? OR ${ORDER_LINK_SEARCH_SQL} LIKE ? OR ${OWNER_LABEL_SEARCH_SQL} LIKE ?)`);
         params.push(like, like, like);
     }
 
@@ -531,15 +545,15 @@ function buildAnalyticsFilter(filters) {
         params.push(filters.document_status);
     }
     if (filters.budget_category) {
-        where.push('accounting.budget_category LIKE ?');
+        where.push(`${ACCOUNTING_BUDGET_CATEGORY_SEARCH_SQL} LIKE ?`);
         params.push(`%${filters.budget_category}%`);
     }
     if (filters.cost_center) {
-        where.push('accounting.cost_center LIKE ?');
+        where.push(`${ACCOUNTING_COST_CENTER_SEARCH_SQL} LIKE ?`);
         params.push(`%${filters.cost_center}%`);
     }
     if (filters.supplier_name) {
-        where.push('accounting.supplier_name LIKE ?');
+        where.push(`${ACCOUNTING_SUPPLIER_SEARCH_SQL} LIKE ?`);
         params.push(`%${filters.supplier_name}%`);
     }
     if (filters.owner_type === 'sso') {
@@ -557,9 +571,9 @@ function buildAnalyticsFilter(filters) {
     }
     if (filters.q) {
         const like = `%${filters.q}%`;
-        where.push(`(orders.good LIKE ? OR orders.link LIKE ? OR ${OWNER_LABEL_SEARCH_SQL} LIKE ?
-            OR accounting.supplier_name LIKE ? OR accounting.invoice_number LIKE ?
-            OR accounting.budget_category LIKE ? OR accounting.cost_center LIKE ?)`);
+        where.push(`(${ORDER_GOOD_SEARCH_SQL} LIKE ? OR ${ORDER_LINK_SEARCH_SQL} LIKE ? OR ${OWNER_LABEL_SEARCH_SQL} LIKE ?
+            OR ${ACCOUNTING_SUPPLIER_SEARCH_SQL} LIKE ? OR ${ACCOUNTING_INVOICE_SEARCH_SQL} LIKE ?
+            OR ${ACCOUNTING_BUDGET_CATEGORY_SEARCH_SQL} LIKE ? OR ${ACCOUNTING_COST_CENTER_SEARCH_SQL} LIKE ?)`);
         params.push(like, like, like, like, like, like, like);
     }
 
@@ -691,9 +705,9 @@ async function loadBuySsoUsers(connection, { q = '', selectedId = null } = {}) {
     if (q) {
         const like = `%${q}%`;
         where.push(`(
-            sso_users.name LIKE ?
-            OR sso_users.nickname LIKE ?
-            OR sso_users.msgnickname LIKE ?
+            ${SSO_USER_NAME_SEARCH_SQL} LIKE ?
+            OR ${SSO_USER_NICKNAME_SEARCH_SQL} LIKE ?
+            OR ${SSO_USER_MSGNICKNAME_SEARCH_SQL} LIKE ?
         )`);
         params.push(like, like, like);
     }
@@ -839,7 +853,7 @@ async function loadMyOrdersPage(connection, req) {
         params.push(status);
     }
     if (q) {
-        where.push('(orders.good LIKE ? OR orders.link LIKE ?)');
+        where.push(`(${ORDER_GOOD_SEARCH_SQL} LIKE ? OR ${ORDER_LINK_SEARCH_SQL} LIKE ?)`);
         params.push(`%${q}%`, `%${q}%`);
     }
 
