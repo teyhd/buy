@@ -305,6 +305,28 @@ function localReturnTo(value, fallback) {
     return returnTo;
 }
 
+function wantsJson(req) {
+    return req.get('accept')?.includes('application/json')
+        || req.get('x-requested-with') === 'XMLHttpRequest';
+}
+
+function redirectWithMessage(res, redirectTo, key, message) {
+    const separator = redirectTo.includes('?') ? '&' : '?';
+    return res.redirect(`${redirectTo}${separator}${key}=${encodeURIComponent(message)}`);
+}
+
+function jsonOrRedirect(req, res, statusCode, redirectTo, key, message, payload = {}) {
+    if (wantsJson(req)) {
+        return res.status(statusCode).json({
+            ok: statusCode >= 200 && statusCode < 300,
+            message,
+            ...payload,
+        });
+    }
+
+    return redirectWithMessage(res, redirectTo, key, message);
+}
+
 function buildOrderFilter({ scope = 'active', status = '', q = '' }) {
     const where = [];
     const params = [];
@@ -1088,17 +1110,62 @@ export const updateOrderAdmin = async (req, res) => {
     let connection;
     const { quantity, link } = req.body;
     const price = normalizePrice(req.body.price);
+    const orderId = normalizeId(req.params.id);
+    if (!orderId) {
+        if (wantsJson(req)) {
+            return res.status(400).json({ ok: false, message: 'Некорректный номер заказа.' });
+        }
+        return renderError(res, req, 400, 'Некорректный заказ', 'Некорректный номер заказа.');
+    }
+
     try {
         connection = await pool.getConnection();
+        const [existingRows] = await connection.query('SELECT id FROM orders WHERE id = ? LIMIT 1', [orderId]);
+        if (existingRows.length === 0) {
+            if (wantsJson(req)) {
+                return res.status(404).json({ ok: false, message: 'Заказ не найден или был удалён.' });
+            }
+            return renderError(res, req, 404, 'Заказ не найден', 'Заказ не найден или был удалён.');
+        }
+
         await connection.query(
             'UPDATE orders SET quantity = ?, price = ?, link = ? WHERE id = ?',
-            [quantity, price, link, req.params.id]
+            [quantity, price, link, orderId]
         );
+
         mlog('Заказ был отредактирован администратором.');
+        if (wantsJson(req)) {
+            const [rows] = await connection.query(
+                `SELECT ${ORDER_OWNER_SELECT} FROM orders ${ORDER_OWNER_JOINS} WHERE orders.id = ? LIMIT 1`,
+                [orderId]
+            );
+            const order = attachOrderUi(rows[0] || {
+                id: orderId,
+                quantity,
+                price,
+                link,
+            });
+            return res.status(200).json({
+                ok: true,
+                message: 'Данные заказа сохранены.',
+                order: {
+                    id: order.id,
+                    quantity: order.quantity,
+                    price: order.price,
+                    price_label: order.price_label,
+                    link: order.link,
+                    link_label: order.link_label,
+                },
+            });
+        }
+
         res.redirect('/manageorders?updated=' + encodeURIComponent('Данные заказа обновлены.'));
     } catch (err) {
         console.log(err);
         mlog(err);
+        if (wantsJson(req)) {
+            return res.status(500).json({ ok: false, message: 'Не удалось обновить заказ.' });
+        }
         renderError(res, req, 500, 'Ошибка сервера', 'Не удалось обновить заказ.');
     } finally {
         if (connection) connection.release();
@@ -1109,18 +1176,33 @@ export const updateOrderStatus = async (req, res) => {
     let connection;
     const status = req.body.status;
     const redirectTo = localReturnTo(req.body.return_to, '/manageorders');
+    const orderId = normalizeId(req.params.id);
+    if (!orderId) {
+        return jsonOrRedirect(req, res, 400, redirectTo, 'error', 'Некорректный номер заказа.');
+    }
     if (!isValidStatus(status)) {
-        return res.redirect(`${redirectTo}${redirectTo.includes('?') ? '&' : '?'}error=${encodeURIComponent('Недопустимый статус заказа.')}`);
+        return jsonOrRedirect(req, res, 400, redirectTo, 'error', 'Недопустимый статус заказа.');
     }
 
     try {
         connection = await pool.getConnection();
-        await connection.query('UPDATE orders SET status = ? WHERE id = ?', [status, req.params.id]);
-        res.redirect(`${redirectTo}${redirectTo.includes('?') ? '&' : '?'}updated=${encodeURIComponent('Статус заказа обновлён.')}`);
+        const [existingRows] = await connection.query('SELECT id FROM orders WHERE id = ? LIMIT 1', [orderId]);
+        if (existingRows.length === 0) {
+            return jsonOrRedirect(req, res, 404, redirectTo, 'error', 'Заказ не найден или был удалён.');
+        }
+        await connection.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
+
+        const message = isClosedStatus(status)
+            ? 'Статус сохранён. Заказ уйдёт в архив после обновления списка.'
+            : 'Статус заказа сохранён.';
+        return jsonOrRedirect(req, res, 200, redirectTo, 'updated', message, {
+            status,
+            closed: isClosedStatus(status),
+        });
     } catch (err) {
         console.log(err);
         mlog(err);
-        res.redirect(`${redirectTo}${redirectTo.includes('?') ? '&' : '?'}error=${encodeURIComponent('Не удалось обновить статус заказа.')}`);
+        return jsonOrRedirect(req, res, 500, redirectTo, 'error', 'Не удалось обновить статус заказа.');
     } finally {
         if (connection) connection.release();
     }

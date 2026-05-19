@@ -1,42 +1,82 @@
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
-  <div class="container-fluid" style="font-size: 17px;">
-    <a class="navbar-brand" href="/">Закупки</a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+<nav class="navbar navbar-dark navbar-expand-lg fixed-top app-header" aria-label="Основная навигация">
+  <div class="container-fluid app-header__inner">
+    <a class="navbar-brand app-header__brand" href="/">
+      <span class="app-header__brand-icon" aria-hidden="true"><i class="bi bi-bag-check"></i></span>
+      <span>Закупки</span>
+      <span class="app-header__brand-subtitle d-none d-xl-inline">Purchase Service</span>
+    </a>
+
+    <button class="navbar-toggler app-header__toggler" type="button" data-bs-toggle="offcanvas" data-bs-target="#app-navbar" aria-controls="app-navbar" aria-label="Открыть меню">
       <span class="navbar-toggler-icon"></span>
     </button>
-    <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
-      <ul class="navbar-nav">
-        {{#if isAuthenticated}}
+
+    <div class="offcanvas offcanvas-end text-bg-dark app-header__menu" tabindex="-1" id="app-navbar" aria-labelledby="app-navbar-title">
+      <div class="offcanvas-header">
+        <h2 class="offcanvas-title fs-5" id="app-navbar-title">
+          <i class="bi bi-bag-check me-2" aria-hidden="true"></i>
+          Закупки
+        </h2>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Закрыть меню"></button>
+      </div>
+
+      <div class="offcanvas-body">
+        <ul class="navbar-nav ms-auto align-items-lg-center app-header__nav">
+          {{#if isAuthenticated}}
             {{#if user.is_admin}}
-                <li class="nav-item">
-                    <a class="nav-link" href="/manageorders">Активные заказы</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/myorders">Мои заказы</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/ordersarchive">Архив</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/analytics">Аналитика и учёт</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/dashboard">Заказчики</a>
-                </li>
+              <li class="nav-item">
+                <a class="nav-link app-header__link {{#if navActive.manageorders}}active{{/if}}" {{#if navActive.manageorders}}aria-current="page"{{/if}} href="/manageorders">
+                  <i class="bi bi-card-checklist" aria-hidden="true"></i>
+                  <span>Активные</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link app-header__link {{#if navActive.myorders}}active{{/if}}" {{#if navActive.myorders}}aria-current="page"{{/if}} href="/myorders">
+                  <i class="bi bi-bag" aria-hidden="true"></i>
+                  <span>Мои</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link app-header__link {{#if navActive.ordersarchive}}active{{/if}}" {{#if navActive.ordersarchive}}aria-current="page"{{/if}} href="/ordersarchive">
+                  <i class="bi bi-archive" aria-hidden="true"></i>
+                  <span>Архив</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link app-header__link {{#if navActive.analytics}}active{{/if}}" {{#if navActive.analytics}}aria-current="page"{{/if}} href="/analytics">
+                  <i class="bi bi-bar-chart-line" aria-hidden="true"></i>
+                  <span>Аналитика</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link app-header__link {{#if navActive.dashboard}}active{{/if}}" {{#if navActive.dashboard}}aria-current="page"{{/if}} href="/dashboard">
+                  <i class="bi bi-people" aria-hidden="true"></i>
+                  <span>Заказчики</span>
+                </a>
+              </li>
             {{else}}
-                <li class="nav-item">
-                    <a class="nav-link" href="/myorders">Мои заказы</a>
-                </li>
+              <li class="nav-item">
+                <a class="nav-link app-header__link {{#if navActive.myorders}}active{{/if}}" {{#if navActive.myorders}}aria-current="page"{{/if}} href="/myorders">
+                  <i class="bi bi-bag" aria-hidden="true"></i>
+                  <span>Мои заказы</span>
+                </a>
+              </li>
             {{/if}}
-            <li class="nav-item">
-                <a class="nav-link" href="/api/auth/logout">Выход</a>
+            <li class="nav-item app-header__logout-item">
+              <a class="btn btn-outline-light btn-sm app-header__logout" href="/api/auth/logout">
+                <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+                <span>Выход</span>
+              </a>
             </li>
-        {{else}}
+          {{else}}
             <li class="nav-item">
-                <a class="nav-link" href="/">Главная</a>
+              <a class="nav-link app-header__link" href="/">
+                <i class="bi bi-house" aria-hidden="true"></i>
+                <span>Главная</span>
+              </a>
             </li>
-        {{/if}}
-      </ul>
+          {{/if}}
+        </ul>
+      </div>
     </div>
   </div>
 </nav>

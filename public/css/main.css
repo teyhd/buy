@@ -4,8 +4,94 @@ body {
     background: #f8f9fa;
 }
 
+.app-header {
+    background: #1f2328;
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, .12);
+    min-height: 58px;
+}
+
+.app-header__inner {
+    gap: 12px;
+    min-height: 58px;
+    padding-left: 18px;
+    padding-right: 18px;
+}
+
+.app-header__brand {
+    align-items: center;
+    display: inline-flex;
+    font-size: 18px;
+    font-weight: 700;
+    gap: 10px;
+    letter-spacing: 0;
+}
+
+.app-header__brand-icon {
+    align-items: center;
+    background: rgba(255, 255, 255, .12);
+    border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 7px;
+    display: inline-flex;
+    height: 34px;
+    justify-content: center;
+    width: 34px;
+}
+
+.app-header__brand-subtitle {
+    border-left: 1px solid rgba(255, 255, 255, .2);
+    color: rgba(255, 255, 255, .58);
+    font-size: 13px;
+    font-weight: 500;
+    margin-left: 2px;
+    padding-left: 12px;
+}
+
+.app-header__nav {
+    gap: 4px;
+}
+
+.app-header__link {
+    align-items: center;
+    border-radius: 7px;
+    display: inline-flex;
+    gap: 7px;
+    padding: 8px 10px;
+}
+
+.app-header .navbar-nav .nav-link {
+    color: rgba(255, 255, 255, .72);
+}
+
+.app-header .navbar-nav .nav-link:hover,
+.app-header .navbar-nav .nav-link:focus {
+    background: rgba(255, 255, 255, .08);
+    color: #fff;
+}
+
+.app-header .navbar-nav .nav-link.active {
+    background: rgba(13, 110, 253, .22);
+    color: #fff;
+}
+
+.app-header__logout-item {
+    margin-left: 8px;
+}
+
+.app-header__logout {
+    align-items: center;
+    border-color: rgba(255, 255, 255, .35);
+    display: inline-flex;
+    gap: 7px;
+    padding: 7px 11px;
+}
+
+.app-header__toggler {
+    border-color: rgba(255, 255, 255, .24);
+}
+
 .page-header {
-    padding-top: 80px;
+    padding-top: 88px;
     margin-bottom: 24px;
 }
 
@@ -87,10 +173,29 @@ body {
 
 .status-form {
     display: grid;
-    grid-template-columns: minmax(145px, 1fr) auto;
-    gap: 6px;
+    grid-template-columns: minmax(160px, 1fr);
+    gap: 4px;
     align-items: center;
-    min-width: 250px;
+    min-width: 180px;
+}
+
+.inline-save-state {
+    color: #6c757d;
+    font-size: 12px;
+    line-height: 1.2;
+    min-height: 15px;
+}
+
+.inline-save-state--success {
+    color: #198754;
+}
+
+.inline-save-state--error {
+    color: #dc3545;
+}
+
+.manage-orders-alert {
+    margin-bottom: 16px;
 }
 
 .status-badge {
@@ -237,7 +342,35 @@ body {
 
 @media (max-width: 768px) {
     .page-header {
-        padding-top: 72px;
+        padding-top: 78px;
+    }
+
+    .app-header__inner {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .app-header__menu .offcanvas-body {
+        padding-top: 8px;
+    }
+
+    .app-header__nav {
+        align-items: stretch !important;
+        gap: 6px;
+    }
+
+    .app-header__link,
+    .app-header__logout {
+        display: flex;
+        font-size: 17px;
+        justify-content: flex-start;
+        padding: 11px 12px;
+        width: 100%;
+    }
+
+    .app-header__logout-item {
+        margin-left: 0;
+        margin-top: 6px;
     }
 
     .order-page-header h1 {

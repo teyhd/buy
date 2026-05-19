@@ -117,6 +117,14 @@ checkDbConnection();
 app.use((req, res, next) => {
     res.locals.isAuthenticated = req.session.user ? true : false;
     res.locals.user = req.session.user;
+    res.locals.currentPath = req.path;
+    res.locals.navActive = {
+        manageorders: req.path === '/' || req.path.startsWith('/manageorders'),
+        myorders: req.path.startsWith('/myorders'),
+        ordersarchive: req.path.startsWith('/ordersarchive'),
+        analytics: req.path.startsWith('/analytics'),
+        dashboard: req.path.startsWith('/dashboard'),
+    };
     console.log('isAuthenticated:', res.locals.isAuthenticated);
     mlog('isAuthenticated:', res.locals.isAuthenticated);
     next();
@@ -173,6 +181,11 @@ function fieldErrorsFromResult(errors) {
         }
     });
     return fieldErrors;
+}
+
+function wantsJson(req) {
+    return req.get('accept')?.includes('application/json')
+        || req.get('x-requested-with') === 'XMLHttpRequest';
 }
 
 function normalizePriceInput(value) {
@@ -278,10 +291,19 @@ app.post('/manageorders/editorderadmin/:id', ensureAuthenticated, ensureAdmin,
         const errors = validationResult(req);
 
         if (!errors.isEmpty()) {
+            const fieldErrors = fieldErrorsFromResult(errors);
+            if (wantsJson(req)) {
+                return res.status(422).json({
+                    ok: false,
+                    message: 'Проверьте поля формы.',
+                    fieldErrors,
+                });
+            }
+
             return res.status(422).render('edit-order-admin', {
                 title: 'Изменение заказа',
                 alert: 'Проверьте поля формы.',
-                fieldErrors: fieldErrorsFromResult(errors),
+                fieldErrors,
                 isAuthenticated: req.session.isAuthenticated,
                 user: req.session.user,
                 order: {
