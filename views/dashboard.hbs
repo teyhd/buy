@@ -35,7 +35,7 @@
     <tbody>
       {{#each rows}}
       <tr>
-        <td>{{this.owner_label}}</td>
+        <td>{{> expandable-text text=this.owner_label}}</td>
         <td>{{this.active_count}}</td>
         <td>{{this.closed_count}}</td>
         <td>{{this.total_count}}</td>

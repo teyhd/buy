@@ -50,7 +50,7 @@
       {{#each rows}}
       <tr>
         <td>
-          <div>{{this.good}}</div>
+          {{> expandable-text text=this.good}}
           {{#if this.created_by_admin}}
             <div class="text-muted small">добавлено администратором</div>
           {{/if}}

@@ -45,6 +45,42 @@ body {
     white-space: nowrap;
 }
 
+.table-expand-text {
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    border-bottom: 1px solid transparent;
+    display: -webkit-box;
+    line-height: 1.35;
+    max-width: 280px;
+    overflow: hidden;
+    text-align: left;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.table-expand-text.is-toggle-ready {
+    border-bottom-style: dotted;
+    border-bottom-color: #adb5bd;
+    cursor: pointer;
+}
+
+.table-expand-text.is-toggle-ready:hover {
+    border-bottom-color: #495057;
+}
+
+.table-expand-text:focus {
+    border-radius: 4px;
+    outline: 2px solid rgba(13, 110, 253, .35);
+    outline-offset: 2px;
+}
+
+.table-expand-text.is-expanded {
+    -webkit-line-clamp: unset;
+    border-bottom-color: transparent;
+    max-width: 520px;
+    overflow: visible;
+}
+
 .table-actions {
     min-width: 190px;
 }

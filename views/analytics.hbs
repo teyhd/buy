@@ -299,9 +299,9 @@
             {{#each paymentRows}}
             <tr>
               <td>{{payment_date_label}}</td>
-              <td>{{supplier_label}}</td>
-              <td>{{invoice_label}}</td>
-              <td>{{good}}</td>
+              <td>{{> expandable-text text=supplier_label}}</td>
+              <td>{{> expandable-text text=invoice_label}}</td>
+              <td>{{> expandable-text text=good}}</td>
               <td>{{planned_amount_label}} руб.</td>
               <td><span class="badge text-bg-{{payment_status_class}}">{{payment_status_label}}</span></td>
               <td class="text-end">
@@ -339,11 +339,11 @@
             {{#each attentionRows}}
             <tr>
               <td>
-                <div>{{good}}</div>
+                {{> expandable-text text=good}}
                 <div class="text-muted small">#{{id}} · {{planned_amount_label}} руб.</div>
               </td>
-              <td>{{owner_label}}</td>
-              <td>{{supplier_label}}</td>
+              <td>{{> expandable-text text=owner_label}}</td>
+              <td>{{> expandable-text text=supplier_label}}</td>
               <td><span class="badge text-bg-{{payment_status_class}}">{{payment_status_label}}</span></td>
               <td><span class="badge text-bg-{{document_status_class}}">{{document_status_label}}</span></td>
               <td>
@@ -387,12 +387,12 @@
             {{#each detailRows}}
             <tr>
               <td>
-                <div>{{good}}</div>
+                {{> expandable-text text=good}}
                 <div class="text-muted small">#{{id}} · {{formatDate creation_date}}</div>
               </td>
               <td><a href="/dashboard/vieworder/{{owner_type}}/{{owner_ref}}?scope=all">{{owner_label}}</a></td>
-              <td>{{budget_category_label}}</td>
-              <td>{{supplier_label}}</td>
+              <td>{{> expandable-text text=budget_category_label}}</td>
+              <td>{{> expandable-text text=supplier_label}}</td>
               <td>{{planned_amount_label}} руб.</td>
               <td>{{actual_amount_label}} руб.</td>
               <td><span class="badge text-bg-{{payment_status_class}}">{{payment_status_label}}</span></td>
