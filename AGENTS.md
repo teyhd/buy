@@ -49,9 +49,10 @@ This is the single source of truth for coding agents in this repository. It repl
 ## Core Commands
 - Install dependencies: `npm install`.
 - Run app locally with auto-reload: `npm run dev`.
-- Run app directly: `node index.js`.
+- Run app directly: `npm start`.
 - App default local bind: port `5000` via `PORT`, fallback `5000`.
-- Active MySQL port in `index.js`: `3407`.
+- Production app port: `3012` via `PORT`.
+- MySQL port is read from `DB_PORT`, fallback `3407`.
 - MySQL connection values are read from `.env`.
 - There is no configured test script yet.
 

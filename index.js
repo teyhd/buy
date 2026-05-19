@@ -80,7 +80,7 @@ app.set('views','views');
 export const pool = mysql.createPool({
     connectionLimit : 100,
     host            : process.env.host,
-    port:3407,
+    port            : Number(process.env.DB_PORT) || 3407,
     user            : process.env.user,
     password        : process.env.password,
     database        : process.env.database
@@ -141,6 +141,10 @@ function redirectIfAuthenticated(req, res, next) {
 
 app.get('/', (req, res) => {
     res.render('welcome', { title: 'Главная страница', user: req.session.user });
+});
+
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok', service: 'purchase-service' });
 });
 
 app.get('/register', redirectIfAuthenticated, (req, res) => {
