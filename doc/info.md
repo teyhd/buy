@@ -40,7 +40,7 @@
 - `ensureAdmin`;
 - `ensureUser`.
 
-Код: [index.js](../index.js).
+Код: [buy.js](../buy.js).
 
 ### Личный кабинет пользователя
 

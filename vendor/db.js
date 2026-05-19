@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config();
-import { pool } from '../index.js';
+import { pool } from '../buy.js';
 import { mlog } from './logs.js';
 
 export const ORDER_STATUS = Object.freeze({

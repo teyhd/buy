@@ -2,11 +2,11 @@
   "name": "purchase-service",
   "version": "1.0.0",
   "description": "managing purchases",
-  "main": "index.js",
+  "main": "buy.js",
   "type": "module",
   "scripts": {
-    "dev": "nodemon index",
-    "start": "node index.js"
+    "dev": "nodemon buy.js",
+    "start": "node buy.js"
   },
   "author": "sonya",
   "license": "ISC",

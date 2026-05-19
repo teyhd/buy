@@ -25,7 +25,7 @@ This is the single source of truth for coding agents in this repository. It repl
 - For UI/user-flow tasks, validate critical flows in a browser when applicable.
 
 ## Tech Stack And Layout
-- Backend/web server: Node.js and Express in `index.js`.
+- Backend/web server: Node.js and Express in `buy.js`.
 - Templates/frontend: Express Handlebars in `views`.
 - Static assets: `public/css`, `public/javascript`, `public/img`.
 - Data: MySQL via `mysql2/promise`.
@@ -35,7 +35,7 @@ This is the single source of truth for coding agents in this repository. It repl
 - Runtime logs belong in `vendor/logs`.
 - Runtime log filename format used by current code: `дд.мм log.txt`.
 - Runtime logging helper: `vendor/logs.js`.
-- Legacy DB helper: `config/dbConnection.js`; the active app connection pool is exported from `index.js`.
+- Legacy DB helper: `config/dbConnection.js`; the active app connection pool is exported from `buy.js`.
 
 ## Before Every Task
 - Read this `AGENTS.md` before planning changes.
