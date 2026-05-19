@@ -25,7 +25,6 @@
     <thead class="table-dark">
       <tr>
         <th scope="col">Заказчик</th>
-        <th scope="col">Источник</th>
         <th scope="col">Активные</th>
         <th scope="col">Закрытые</th>
         <th scope="col">Всего</th>
@@ -37,7 +36,6 @@
       {{#each rows}}
       <tr>
         <td>{{this.owner_label}}</td>
-        <td><span class="badge text-bg-light">{{this.source_label}}</span></td>
         <td>{{this.active_count}}</td>
         <td>{{this.closed_count}}</td>
         <td>{{this.total_count}}</td>
