@@ -36,7 +36,7 @@ CREATE TABLE `orders` (
   `arrival_date` datetime DEFAULT NULL,
   `author_id` bigint(20) UNSIGNED DEFAULT NULL,
   `sso_author_id` int(11) DEFAULT NULL,
-  `status` enum('На рассмотрении','Закупаем','Доставляем','Ожидает получения','Получен') DEFAULT NULL,
+  `status` enum('На рассмотрении','Закупаем','Доставляем','Ожидает получения','Получен','Отменен') DEFAULT NULL,
   `price` decimal(10,2) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 

@@ -3,7 +3,32 @@ dotenv.config();
 import { pool } from '../index.js';
 import { mlog } from './logs.js';
 
-const RECEIVED_STATUS = 'Получен';
+export const ORDER_STATUS = Object.freeze({
+    PENDING: 'На рассмотрении',
+    PURCHASING: 'Закупаем',
+    DELIVERING: 'Доставляем',
+    WAITING: 'Ожидает получения',
+    RECEIVED: 'Получен',
+    CANCELLED: 'Отменен',
+});
+
+const ACTIVE_STATUSES = [
+    ORDER_STATUS.PENDING,
+    ORDER_STATUS.PURCHASING,
+    ORDER_STATUS.DELIVERING,
+    ORDER_STATUS.WAITING,
+];
+const CLOSED_STATUSES = [ORDER_STATUS.RECEIVED, ORDER_STATUS.CANCELLED];
+const ALL_STATUSES = [...ACTIVE_STATUSES, ...CLOSED_STATUSES];
+const STATUS_CLASS = {
+    [ORDER_STATUS.PENDING]: 'secondary',
+    [ORDER_STATUS.PURCHASING]: 'primary',
+    [ORDER_STATUS.DELIVERING]: 'info',
+    [ORDER_STATUS.WAITING]: 'warning',
+    [ORDER_STATUS.RECEIVED]: 'success',
+    [ORDER_STATUS.CANCELLED]: 'dark',
+};
+
 const OWNER_LABEL_SQL = `COALESCE(
     NULLIF(sso_users.name, ''),
     NULLIF(sso_users.nickname, ''),
@@ -12,11 +37,13 @@ const OWNER_LABEL_SQL = `COALESCE(
     CONCAT('SSO #', orders.sso_author_id),
     CONCAT('Legacy #', orders.author_id)
 )`;
+const OWNER_TYPE_SQL = `CASE WHEN orders.sso_author_id IS NULL THEN 'legacy' ELSE 'sso' END`;
+const OWNER_REF_SQL = `COALESCE(orders.sso_author_id, orders.author_id)`;
 const ORDER_OWNER_SELECT = `orders.*,
     ${OWNER_LABEL_SQL} AS owner_label,
     ${OWNER_LABEL_SQL} AS email,
-    CASE WHEN orders.sso_author_id IS NULL THEN 'legacy' ELSE 'sso' END AS owner_type,
-    COALESCE(orders.sso_author_id, orders.author_id) AS owner_ref`;
+    ${OWNER_TYPE_SQL} AS owner_type,
+    ${OWNER_REF_SQL} AS owner_ref`;
 const ORDER_OWNER_JOINS = `LEFT JOIN sso.users AS sso_users ON sso_users.id = orders.sso_author_id
     LEFT JOIN users AS legacy_users ON legacy_users.id = orders.author_id`;
 
@@ -28,740 +55,723 @@ function getSsoUserId(req) {
     return id;
 }
 
-async function loadMyOrdersPage(connection, req, searchTerm = null) {
-    const ssoUserId = getSsoUserId(req);
-    const page = Number(req.query.page) || 1;
-    const limit = 5;
-    const offset = (page - 1) * limit;
-    const like = `%${searchTerm || ''}%`;
+function normalizePage(value) {
+    const page = Number(value);
+    return Number.isInteger(page) && page > 0 ? page : 1;
+}
 
-    const where = searchTerm ? 'sso_author_id = ? AND good LIKE ?' : 'sso_author_id = ?';
-    const params = searchTerm ? [ssoUserId, like] : [ssoUserId];
-    const [rows] = await connection.query(`SELECT * FROM orders WHERE ${where} LIMIT ${limit} OFFSET ${offset}`, params);
-    const [totalRows] = await connection.query(`SELECT COUNT(*) as total FROM orders WHERE ${where}`, params);
-    const totalPages = Math.ceil(totalRows[0].total / limit);
-    const pages = Array.from({length: totalPages}, (_, i) => {
+function normalizeId(value) {
+    const id = Number(value);
+    return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function normalizeText(value) {
+    return String(value || '').trim();
+}
+
+function normalizePrice(value) {
+    const normalized = String(value || '').replace(',', '.').trim();
+    return normalized === '' ? null : normalized;
+}
+
+function statusOptions(selected, statuses = ALL_STATUSES) {
+    return statuses.map((status) => ({
+        value: status,
+        label: status,
+        selected: status === selected,
+    }));
+}
+
+function isValidStatus(status) {
+    return ALL_STATUSES.includes(status);
+}
+
+function isActiveStatus(status) {
+    return ACTIVE_STATUSES.includes(status);
+}
+
+function isClosedStatus(status) {
+    return CLOSED_STATUSES.includes(status);
+}
+
+function scopeOptions(selected) {
+    return [
+        { value: 'active', label: 'Активные', selected: selected === 'active' },
+        { value: 'closed', label: 'Закрытые', selected: selected === 'closed' },
+        { value: 'all', label: 'Все', selected: selected === 'all' },
+    ];
+}
+
+function normalizeScope(value, fallback = 'active') {
+    return ['active', 'closed', 'all'].includes(value) ? value : fallback;
+}
+
+function shortLink(link) {
+    const value = String(link || '').trim();
+    if (!value) return '';
+    try {
+        const url = new URL(value);
+        const path = url.pathname === '/' ? '' : url.pathname;
+        const label = `${url.host}${path}`;
+        return label.length > 48 ? `${label.slice(0, 45)}...` : label;
+    } catch {
+        return value.length > 48 ? `${value.slice(0, 45)}...` : value;
+    }
+}
+
+function formatMoney(value) {
+    const amount = Number(value || 0);
+    return amount.toLocaleString('ru-RU', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
+function attachOrderUi(row) {
+    return {
+        ...row,
+        status_class: STATUS_CLASS[row.status] || 'secondary',
+        status_options: statusOptions(row.status),
+        is_pending: row.status === ORDER_STATUS.PENDING,
+        is_closed: isClosedStatus(row.status),
+        link_label: shortLink(row.link),
+        price_label: formatMoney(row.price),
+    };
+}
+
+function attachCustomerUi(row) {
+    return {
+        ...row,
+        source_label: row.owner_type === 'sso' ? 'SSO' : 'legacy',
+        owner_link: `/dashboard/vieworder/${row.owner_type}/${row.owner_ref}?scope=all`,
+        total_price_label: formatMoney(row.total_price),
+    };
+}
+
+function buildUrl(basePath, query, page) {
+    const params = new URLSearchParams();
+    Object.entries(query || {}).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+            params.set(key, String(value));
+        }
+    });
+    if (page && page > 1) {
+        params.set('page', String(page));
+    } else {
+        params.delete('page');
+    }
+    const qs = params.toString();
+    return qs ? `${basePath}?${qs}` : basePath;
+}
+
+function pagination(basePath, page, total, limit, query = {}) {
+    const totalPages = Math.ceil(Number(total || 0) / limit);
+    const safePage = totalPages > 0 ? Math.min(page, totalPages) : 1;
+    const pages = Array.from({ length: totalPages }, (_, i) => {
+        const number = i + 1;
         return {
-            number: i + 1,
-            isCurrent: i + 1 === page
+            number,
+            isCurrent: number === safePage,
+            url: buildUrl(basePath, query, number),
         };
     });
 
     return {
-        rows,
-        page,
+        page: safePage,
         totalPages,
-        prevPage: page > 1 ? page - 1 : null,
-        nextPage: page < totalPages ? page + 1 : null,
+        prevUrl: safePage > 1 ? buildUrl(basePath, query, safePage - 1) : null,
+        nextUrl: safePage < totalPages ? buildUrl(basePath, query, safePage + 1) : null,
         pages,
     };
 }
 
-function renderMyOrders(res, req, pageData, alert = null) {
-    res.render('myorders', {
-        title: 'Мои заказы',
-        ...pageData,
-        alert,
-        isAuthenticated: req.session.isAuthenticated,
-        user: req.session.user
+function localReturnTo(value, fallback) {
+    const returnTo = String(value || '');
+    if (!returnTo || !returnTo.startsWith('/') || returnTo.startsWith('//')) {
+        return fallback;
+    }
+    return returnTo;
+}
+
+function buildOrderFilter({ scope = 'active', status = '', q = '' }) {
+    const where = [];
+    const params = [];
+
+    if (scope === 'active') {
+        if (isActiveStatus(status)) {
+            where.push('orders.status = ?');
+            params.push(status);
+        } else {
+            where.push('orders.status NOT IN (?, ?)');
+            params.push(...CLOSED_STATUSES);
+        }
+    } else if (scope === 'closed') {
+        if (isClosedStatus(status)) {
+            where.push('orders.status = ?');
+            params.push(status);
+        } else {
+            where.push('orders.status IN (?, ?)');
+            params.push(...CLOSED_STATUSES);
+        }
+    } else if (isValidStatus(status)) {
+        where.push('orders.status = ?');
+        params.push(status);
+    }
+
+    if (q) {
+        const like = `%${q}%`;
+        where.push(`(orders.good LIKE ? OR orders.link LIKE ? OR ${OWNER_LABEL_SQL} LIKE ?)`);
+        params.push(like, like, like);
+    }
+
+    return {
+        whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '',
+        params,
+    };
+}
+
+function buildOwnerScopeFilter(ownerColumn, ownerId, scope) {
+    const where = [`orders.${ownerColumn} = ?`];
+    const params = [ownerId];
+
+    if (scope === 'active') {
+        where.push('orders.status NOT IN (?, ?)');
+        params.push(...CLOSED_STATUSES);
+    } else if (scope === 'closed') {
+        where.push('orders.status IN (?, ?)');
+        params.push(...CLOSED_STATUSES);
+    }
+
+    return {
+        whereSql: `WHERE ${where.join(' AND ')}`,
+        params,
+    };
+}
+
+function renderError(res, req, status, heading, message) {
+    return res.status(status).render('error', {
+        title: heading,
+        code: status,
+        heading,
+        message,
+        isAuthenticated: req.session?.isAuthenticated,
+        user: req.session?.user,
     });
 }
 
+async function loadMyOrdersPage(connection, req) {
+    const ssoUserId = getSsoUserId(req);
+    const page = normalizePage(req.query.page);
+    const limit = 5;
+    const offset = (page - 1) * limit;
+    const q = normalizeText(req.query.q || req.query.search);
+    const status = isValidStatus(req.query.status) ? req.query.status : '';
 
-//register
-export const register = async (req, res) => {
-    const { surname, name, patname, email, password } = req.body;
-
-    try {
-        // check if the users email is unique
-        const checkQuery = 'SELECT * FROM users WHERE email = ?';
-        const [users] = await pool.execute(checkQuery, [email]);
-        if (users.length > 0) {
-            return res.render('register', {
-                title: 'Регистрация',
-                alert: 'Пользователь с таким логином уже существует!',
-                surname, name, patname, email
-            });
-        }
-
-        const query = 'INSERT INTO users SET surname = ?, name = ?, patname = ?, email = ?, password = ?';
-        console.log('Выполняется SQL-запрос: ', query);
-        mlog('Выполняется SQL-запрос: ', query);
-        const result = await pool.execute(query, [surname, name, patname, email, password]);
-        if (result) {
-            const [rows, fields] = result;
-            res.render('login', { alert: 'Аккаунт успешно создан! Теперь вы можете войти.' });
-            console.log('The data from users table: \n', rows);
-            mlog('Аккаунт успешно создан!');
-        } else {
-            console.log('Ошибка!');
-            mlog('Ошибка!');
-        }
-    } catch (err) {
-        console.log(err);
-        mlog(err);
-        res.status(500).render('register', {
-            title: 'Регистрация',
-            alert: 'Ошибка сервера.'
-        });
+    const where = ['sso_author_id = ?'];
+    const params = [ssoUserId];
+    if (status) {
+        where.push('status = ?');
+        params.push(status);
     }
-};
-
-
-//login
-export const login = async (req, res) => {
-    const { email, password } = req.body;
-
-    // check for null or undefined
-    if (!email || !password) {
-        console.log('Ошибка: логин или пароль не определены');
-        mlog('Ошибка: логин или пароль не определены');
-        return;
+    if (q) {
+        where.push('(good LIKE ? OR link LIKE ?)');
+        params.push(`%${q}%`, `%${q}%`);
     }
 
-    try {
-        const query = 'SELECT * FROM users WHERE email = ? AND password = ?';
-        console.log('Выполняется SQL-запрос: ', query);
-        mlog('Выполняется SQL-запрос: ', query);
-        console.log(`Login attempt for: ${email}`)
-        mlog(`Login attempt for: ${email}`)
+    const whereSql = `WHERE ${where.join(' AND ')}`;
+    const [rows] = await connection.query(
+        `SELECT * FROM orders ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`,
+        [...params, limit, offset]
+    );
+    const [totalRows] = await connection.query(`SELECT COUNT(*) AS total FROM orders ${whereSql}`, params);
+    const total = Number(totalRows[0]?.total || 0);
 
-        const connection = await pool.getConnection();
-        console.log('Подключено как ID ' + connection.threadId);
-        mlog('Подключено как ID ' + connection.threadId);
+    return {
+        rows: rows.map(attachOrderUi),
+        hasRows: rows.length > 0,
+        total,
+        filters: { q, status },
+        hasFilters: Boolean(q || status),
+        statusOptions: statusOptions(status),
+        ...pagination('/myorders', page, total, limit, { q, status }),
+    };
+}
 
-        const [rows, fields] = await connection.execute(query, [email, password]);
-        if (rows.length > 0) {
-            req.session.isAuthenticated = true;
-            req.session.user = rows[0];
-            console.log(`Authenticated user id: ${req.session.user.id}`);
-            mlog(`Authenticated user id: ${req.session.user.id}`);
+function renderMyOrders(res, req, pageData, alert = null) {
+    const flash = alert || req.query.created || req.query.updated || req.query.cancelled || req.query.error || null;
+    res.render('myorders', {
+        title: 'Мои заказы',
+        ...pageData,
+        alert: flash,
+        isAuthenticated: req.session.isAuthenticated,
+        user: req.session.user,
+    });
+}
 
-            if (Number(req.session.user.is_admin) == 0) {
-                res.redirect('/myorders');
-            } else {
-                res.redirect('/manageorders');
-            }
-            
-        } else {
-            res.render('login', { alert: 'Неверный логин или пароль!' });
-        }
-        
-        connection.release();
-    } catch (err) {
-        console.error(err);
-        mlog(err);
-    }
-};
-
-
-// ADMINS PART
-//show users
+// Admin customers list. Local users are legacy-only and are used only for historical order labels.
 export const view = async (req, res) => {
+    let connection;
     try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        let page = Number(req.query.page) || 1;
-        let limit = 8;
-        let offset = (page - 1) * limit;
-        const query = `SELECT users.*, COUNT(orders.id) as order_count FROM users LEFT JOIN orders ON users.id = orders.author_id WHERE users.is_admin = 0 GROUP BY users.id LIMIT ${limit} OFFSET ${offset}`;
-        const [rows, fields] = await connection.query(query);
-        
-        const [totalRows] = await connection.query('SELECT COUNT(*) as total FROM users');
-        let totalPages = Math.ceil(totalRows[0].total / limit);
-        let pages = Array.from({length: totalPages}, (_, i) => {
-            return {
-                number: i + 1,
-                isCurrent: i + 1 === page
-            };
-        });
+        connection = await pool.getConnection();
+        const page = normalizePage(req.query.page);
+        const limit = 10;
+        const offset = (page - 1) * limit;
+        const q = normalizeText(req.query.q || req.query.search);
+        const whereSql = q ? `WHERE ${OWNER_LABEL_SQL} LIKE ?` : '';
+        const searchParams = q ? [`%${q}%`] : [];
 
-        connection.release();
-        let alert = req.query.removed;
+        const groupedSelect = `SELECT
+                ${OWNER_TYPE_SQL} AS owner_type,
+                ${OWNER_REF_SQL} AS owner_ref,
+                ${OWNER_LABEL_SQL} AS owner_label,
+                SUM(CASE WHEN orders.status NOT IN (?, ?) THEN 1 ELSE 0 END) AS active_count,
+                SUM(CASE WHEN orders.status IN (?, ?) THEN 1 ELSE 0 END) AS closed_count,
+                COUNT(*) AS total_count,
+                COALESCE(SUM(orders.price), 0) AS total_price
+            FROM orders
+            ${ORDER_OWNER_JOINS}
+            ${whereSql}
+            GROUP BY owner_type, owner_ref, owner_label`;
+
+        const [rows] = await connection.query(
+            `${groupedSelect}
+             ORDER BY owner_label ASC
+             LIMIT ? OFFSET ?`,
+            [...CLOSED_STATUSES, ...CLOSED_STATUSES, ...searchParams, limit, offset]
+        );
+        const [totalRows] = await connection.query(
+            `SELECT COUNT(*) AS total FROM (
+                SELECT ${OWNER_TYPE_SQL} AS owner_type, ${OWNER_REF_SQL} AS owner_ref
+                FROM orders
+                ${ORDER_OWNER_JOINS}
+                ${whereSql}
+                GROUP BY owner_type, owner_ref
+            ) customers`,
+            searchParams
+        );
+        const total = Number(totalRows[0]?.total || 0);
+
         res.render('dashboard', {
-            title: 'База данных', 
-            rows, 
-            alert, 
-            page: page,
-            totalPages: totalPages,
-            prevPage: page > 1 ? page - 1 : null,
-            nextPage: page < totalPages ? page + 1 : null,
-            pages: pages,
+            title: 'Заказчики',
+            rows: rows.map(attachCustomerUi),
+            hasRows: rows.length > 0,
+            total,
+            filters: { q },
+            hasFilters: Boolean(q),
+            alert: req.query.error || req.query.updated || null,
+            ...pagination('/dashboard', page, total, limit, { q }),
             isAuthenticated: req.session.isAuthenticated,
-            user: req.session.user });
-        console.log('The data from users table: \n', rows);
-        mlog('База данных пользователей отобразилась!');
+            user: req.session.user,
+        });
     } catch (err) {
         console.log(err);
         mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось загрузить заказчиков.');
+    } finally {
+        if (connection) connection.release();
     }
 };
-
-
 
 export const find = async (req, res) => {
-    try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        let searchTerm = req.body.search;
-        
-        let page = Number(req.query.page) || 1;
-        let limit = 8;
-        let offset = (page - 1) * limit;
-
-        const query = `SELECT users.*, COUNT(orders.id) as order_count FROM users LEFT JOIN orders ON users.id = orders.author_id WHERE (users.surname LIKE ?) GROUP BY users.id LIMIT ${limit} OFFSET ${offset}`;
-        const [rows, fields] = await connection.query(query, ['%' + searchTerm + '%', '%' + searchTerm + '%']);
-
-        const [totalRows] = await connection.query('SELECT COUNT(*) as total FROM users WHERE surname LIKE ?', ['%' + searchTerm + '%']);
-        let totalPages = Math.ceil(totalRows[0].total / limit);
-        let pages = Array.from({length: totalPages}, (_, i) => {
-            return {
-                number: i + 1,
-                isCurrent: i + 1 === page
-            };
-        });
-
-        connection.release();
-
-        res.render('dashboard', {
-            title: 'База данных', 
-            rows, 
-            page: page,
-            totalPages: totalPages,
-            prevPage: page > 1 ? page - 1 : null,
-            nextPage: page < totalPages ? page + 1 : null,
-            pages: pages,
-            isAuthenticated: req.session.isAuthenticated,
-            user: req.session.user });
-        console.log('The data from users table: \n', rows);
-        mlog('Записи были найдены!');
-    } catch (err) {
-        console.log(err);
-        mlog(err);
-    }
+    const q = normalizeText(req.body.search || req.body.q);
+    res.redirect(buildUrl('/dashboard', { q }, 1));
 };
 
-
-export const form = (req, res) => {
-    res.render('add-user', {title: 'Создание пользователя', isAuthenticated: req.session.isAuthenticated, user: req.session.user});
-};
-
-
-//add new user
-export const create = async (req, res) => {
-    const { surname, name, patname, email, password} = req.body;
-
-    try {
-        // check if the users email is unique
-        const checkQuery = 'SELECT * FROM users WHERE email = ?';
-        const [users] = await pool.execute(checkQuery, [email]);
-        if (users.length > 0) {
-            return res.render('add-user', {
-                title: 'Создание пользователя',
-                alert: 'Пользователь с таким логином уже существует!',
-                surname, name, patname, email
-            });
-        }
-
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        const query = 'INSERT  INTO users SET surname = ?, name = ?, patname = ?, email = ?, password = ?';
-        const [rows, fields] = await connection.query(query, [surname, name, patname, email, password]);
-        connection.release();
-        res.redirect('/dashboard');
-        console.log('The data from users table: \n', rows);
-        mlog('Новый пользователь был добавлен!');
-    } catch (err) {
-        console.log(err);
-        mlog(err);
-        res.status(500).render('add-user', {
-            title: 'Создание пользователя',
-            alert: 'Ошибка сервера.'
-        });
-    }
-};
-
-
-
- //edit user
- export const edit = async (req, res) => {
-    try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        const query = 'SELECT * FROM users WHERE id = ?';
-        const [rows, fields] = await connection.query(query, [req.params.id]);
-        connection.release();
-        res.render('edit-user', {title: 'Редактирование пользователя', rows, isAuthenticated: req.session.isAuthenticated, user: req.session.user });
-        console.log('The data from users table: \n', rows);
-        mlog('Пользователь был отредактирован!');
-    } catch (err) {
-        console.log(err);
-        mlog(err);
-    }
-};
-
-//update user
-export const update = async (req, res) => {
-    const { surname, name, patname, email, password} = req.body;
-    try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        const query = 'UPDATE users SET surname = ?, name = ?, patname =?, email = ?, password = ? WHERE id = ?';
-        const [rows, fields] = await connection.query(query, [surname, name, patname, email, password, req.params.id]);
-
-        let page = Number(req.query.page) || 1;
-        let limit = 8;
-        let offset = (page - 1) * limit;
-        const query2 = `SELECT users.*, COUNT(orders.id) as order_count FROM users LEFT JOIN orders ON users.id = orders.author_id WHERE users.is_admin = 0 GROUP BY users.id LIMIT ${limit} OFFSET ${offset}`;
-        const [userRows, userFields] = await connection.query(query2);
-        
-        const [totalRows] = await connection.query('SELECT COUNT(*) as total FROM users');
-        let totalPages = Math.ceil(totalRows[0].total / limit);
-        let pages = Array.from({length: totalPages}, (_, i) => {
-            return {
-                number: i + 1,
-                isCurrent: i + 1 === page
-            };
-        });
-
-        connection.release();
-
-        res.render('dashboard', {
-            title: 'Панель управления',
-            alert: 'Данные пользователя успешно обновлены!',
-            rows: userRows,
-            page: page,
-            totalPages: totalPages,
-            prevPage: page > 1 ? page - 1 : null,
-            nextPage: page < totalPages ? page + 1 : null,
-            pages: pages,
-            isAuthenticated: req.session.isAuthenticated,
-            user: req.session.user
-        });
-    } catch (err) {
-        console.log(err);
-        mlog(err);
-        res.status(500).render('edit-user', {
-            title: 'Редактирование пользователя',
-            alert: 'Ошибка сервера.',
-            rows: [{
-                surname, name, patname, email, password
-            }]
-        });
-        
-    }
-};
-
-
-
-
-
-  
-//delete user
-export const deleteUser = async (req, res) => {
-    try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        const query = 'DELETE FROM users WHERE id = ?';
-        const [rows, fields] = await connection.query(query, [req.params.id]);
-        connection.release();
-        res.redirect('/dashboard?removed=Пользователь успешно удален!');
-        console.log('The data from users table: \n', rows);
-        mlog('Пользователь успешно удален!');
-    } catch (err) {
-        console.log(err);
-        mlog(err);
-        if (err.code === 'ER_ROW_IS_REFERENCED_2') {
-            res.redirect('/dashboard?error=Удаление невозможно – у пользователя есть активные заказы!');
-        } else {
-            res.redirect('/dashboard?error=Произошла неизвестная ошибка...');
-        }
-    }
-};
-
- //view specific orders
 export const vieworder = async (req, res) => {
+    let connection;
     try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-
-        let page = Number(req.query.page) || 1;
-        let limit = 5;
-        let offset = (page - 1) * limit;
+        connection = await pool.getConnection();
+        const page = normalizePage(req.query.page);
+        const limit = 10;
+        const offset = (page - 1) * limit;
         const source = req.params.source === 'sso' ? 'sso' : 'legacy';
-        const ownerId = Number(req.params.id);
-        const ownerColumn = source === 'sso' ? 'sso_author_id' : 'author_id';
+        const ownerId = normalizeId(req.params.id);
+        if (!ownerId) {
+            return renderError(res, req, 404, 'Заказчик не найден', 'Некорректный идентификатор заказчика.');
+        }
 
-        let userRows;
+        const ownerColumn = source === 'sso' ? 'sso_author_id' : 'author_id';
+        const scope = normalizeScope(req.query.scope, 'active');
+
+        let viewedUser;
         if (source === 'sso') {
             const [rows] = await connection.query(
-                `SELECT id, name AS surname, '' AS name, '' AS patname,
-                    COALESCE(NULLIF(name, ''), NULLIF(nickname, ''), NULLIF(msgnickname, ''), CONCAT('SSO #', id)) AS email
+                `SELECT id,
+                    COALESCE(NULLIF(name, ''), NULLIF(nickname, ''), NULLIF(msgnickname, ''), CONCAT('SSO #', id)) AS label,
+                    COALESCE(NULLIF(nickname, ''), NULLIF(msgnickname, ''), CONCAT('SSO #', id)) AS email
                  FROM sso.users
                  WHERE id = ?
                  LIMIT 1`,
                 [ownerId]
             );
-            userRows = rows;
+            viewedUser = rows[0] || { id: ownerId, label: `SSO #${ownerId}`, email: `SSO #${ownerId}` };
         } else {
-            const [rows] = await connection.query('SELECT * FROM users WHERE id = ?', [ownerId]);
-            userRows = rows;
+            const [rows] = await connection.query(
+                `SELECT id, email,
+                    TRIM(CONCAT(COALESCE(surname, ''), ' ', COALESCE(name, ''), ' ', COALESCE(patname, ''))) AS label
+                 FROM users
+                 WHERE id = ?
+                 LIMIT 1`,
+                [ownerId]
+            );
+            viewedUser = rows[0] || { id: ownerId, label: `Legacy #${ownerId}`, email: `Legacy #${ownerId}` };
         }
 
-        const [totalRows] = await connection.query(`SELECT COUNT(*) as total FROM orders WHERE ${ownerColumn} = ? AND status != ?`, [ownerId, RECEIVED_STATUS]);
-        
-        let totalPages = Math.ceil(totalRows[0].total / limit);
+        const filter = buildOwnerScopeFilter(ownerColumn, ownerId, scope);
+        const [totalRows] = await connection.query(
+            `SELECT COUNT(*) AS total FROM orders ${filter.whereSql}`,
+            filter.params
+        );
+        const total = Number(totalRows[0]?.total || 0);
+        const [orderRows] = await connection.query(
+            `SELECT * FROM orders ${filter.whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`,
+            [...filter.params, limit, offset]
+        );
 
-        let pages = Array.from({length: totalPages}, (_, i) => {
-            return {
-                number: i + 1,
-                isCurrent: i + 1 === page
-            };
-        });
-
-        console.log('The data from users table: \n', userRows);
-        mlog('Заказы были отображены!');
-        const query2 = `SELECT * FROM orders WHERE ${ownerColumn} = ? AND status != ? LIMIT ${limit} OFFSET ${offset}`;
-        const [orderRows, orderFields] = await connection.query(query2, [ownerId, RECEIVED_STATUS]);
-        connection.release();
         res.render('view-order', {
-            title: 'Заказы пользователя', viewedUser: userRows[0], 
-            orders: orderRows, 
+            title: 'История заказчика',
+            viewedUser,
+            orders: orderRows.map(attachOrderUi),
+            hasRows: orderRows.length > 0,
             ownerSource: source,
-            page: page,
-            totalPages: totalPages,
-            prevPage: page > 1 ? page - 1 : null,
-            nextPage: page < totalPages ? page + 1 : null,
-            pages: pages,
-            isAuthenticated: req.session.isAuthenticated, 
-            user: req.session.user });
-
-        console.log('The data from orders table: \n', orderRows);
+            scope,
+            scopeOptions: scopeOptions(scope),
+            total,
+            ...pagination(`/dashboard/vieworder/${source}/${ownerId}`, page, total, limit, { scope }),
+            isAuthenticated: req.session.isAuthenticated,
+            user: req.session.user,
+        });
     } catch (err) {
         console.log(err);
         mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось загрузить историю заказчика.');
+    } finally {
+        if (connection) connection.release();
     }
 };
 
-//edit order admin
 export const editOrderAdmin = async (req, res) => {
+    let connection;
     try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        const query = 'SELECT * FROM orders WHERE id = ?';
-        const [rows, fields] = await connection.query(query, [req.params.id]);
-        connection.release();
-        res.render('edit-order-admin', {title: 'Изменение заказа', rows, isAuthenticated: req.session.isAuthenticated, user: req.session.user });
-        console.log('The data from orders table: \n', rows);
+        connection = await pool.getConnection();
+        const [rows] = await connection.query('SELECT * FROM orders WHERE id = ? LIMIT 1', [req.params.id]);
+        if (rows.length === 0) {
+            return renderError(res, req, 404, 'Заказ не найден', 'Заказ не найден или был удалён.');
+        }
+        res.render('edit-order-admin', {
+            title: 'Изменение заказа',
+            order: attachOrderUi(rows[0]),
+            isAuthenticated: req.session.isAuthenticated,
+            user: req.session.user,
+        });
     } catch (err) {
         console.log(err);
         mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось открыть заказ.');
+    } finally {
+        if (connection) connection.release();
     }
 };
 
 export const updateOrderAdmin = async (req, res) => {
-    const { quantity, price, link } = req.body;
+    let connection;
+    const { quantity, link } = req.body;
+    const price = normalizePrice(req.body.price);
     try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        const query = 'UPDATE orders SET quantity = ?, price = ?, link =? WHERE id = ?';
-        await connection.query(query, [quantity, price, link, req.params.id]);
-        connection.release();
-        mlog('Заказ был отредактирован администратором!');
-        res.redirect('/manageorders?updated=' + encodeURIComponent('Данные заказа успешно обновлены!'));
+        connection = await pool.getConnection();
+        await connection.query(
+            'UPDATE orders SET quantity = ?, price = ?, link = ? WHERE id = ?',
+            [quantity, price, link, req.params.id]
+        );
+        mlog('Заказ был отредактирован администратором.');
+        res.redirect('/manageorders?updated=' + encodeURIComponent('Данные заказа обновлены.'));
     } catch (err) {
         console.log(err);
         mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось обновить заказ.');
+    } finally {
+        if (connection) connection.release();
     }
 };
 
-// update order status
 export const updateOrderStatus = async (req, res) => {
-    const { status } = req.body;
+    let connection;
+    const status = req.body.status;
+    const redirectTo = localReturnTo(req.body.return_to, '/manageorders');
+    if (!isValidStatus(status)) {
+        return res.redirect(`${redirectTo}${redirectTo.includes('?') ? '&' : '?'}error=${encodeURIComponent('Недопустимый статус заказа.')}`);
+    }
+
     try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        const query = 'UPDATE orders SET status = ? WHERE id = ?';
-        await connection.query(query, [status, req.params.id]);
-        connection.release();
-        res.redirect('/manageorders');
+        connection = await pool.getConnection();
+        await connection.query('UPDATE orders SET status = ? WHERE id = ?', [status, req.params.id]);
+        res.redirect(`${redirectTo}${redirectTo.includes('?') ? '&' : '?'}updated=${encodeURIComponent('Статус заказа обновлён.')}`);
     } catch (err) {
         console.log(err);
         mlog(err);
-        const errorMessage = encodeURIComponent('Произошла ошибка при обновлении статуса заказа');
-        res.status(500).send({ message: errorMessage });
+        res.redirect(`${redirectTo}${redirectTo.includes('?') ? '&' : '?'}error=${encodeURIComponent('Не удалось обновить статус заказа.')}`);
+    } finally {
+        if (connection) connection.release();
     }
 };
 
-
-// delete order
 export const deleteOrder = async (req, res) => {
+    let connection;
+    const redirectTo = localReturnTo(req.body.return_to, '/ordersarchive');
     try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        const query = 'SELECT author_id FROM orders WHERE id = ?';
-        const [rows, fields] = await connection.query(query, [req.params.id]);
-        if(rows.length === 0) {
-            let errorMessage = encodeURIComponent('Произошла ошибка при удалении заказа.');
-            res.redirect('/manageorders?error=' + errorMessage);
-            return;
-        }
-        let author_id = rows[0].author_id;
-        const query2 = 'DELETE FROM orders WHERE id = ? AND status = "Получен"';
-        const [rows2, fields2] = await connection.query(query2, [req.params.id]);
-        connection.release();
-        let removedMessage;
-        if(rows2.affectedRows == 0) {
-            removedMessage = encodeURIComponent('Заказ не может быть удален, так как его статус не "Получен".');
-        } else {
-            removedMessage = encodeURIComponent('Заказ успешно удален.');
-        }
-        res.redirect('/manageorders?removed=' + removedMessage);
+        connection = await pool.getConnection();
+        const [result] = await connection.query(
+            'DELETE FROM orders WHERE id = ? AND status IN (?, ?)',
+            [req.params.id, ...CLOSED_STATUSES]
+        );
+        const key = result.affectedRows > 0 ? 'removed' : 'error';
+        const text = result.affectedRows > 0
+            ? 'Закрытый заказ удалён.'
+            : 'Удалять можно только закрытые заказы.';
+        res.redirect(`${redirectTo}${redirectTo.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(text)}`);
     } catch (err) {
         console.log(err);
         mlog(err);
-        let errorMessage = encodeURIComponent('Произошла ошибка при удалении заказа.');
-        res.redirect('/manageorders?error=' + errorMessage);
+        res.redirect(`${redirectTo}${redirectTo.includes('?') ? '&' : '?'}error=${encodeURIComponent('Не удалось удалить заказ.')}`);
+    } finally {
+        if (connection) connection.release();
     }
 };
 
-//show archive orders
 export const viewarchive = async (req, res) => {
+    let connection;
     try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
+        connection = await pool.getConnection();
+        const page = normalizePage(req.query.page);
+        const limit = 10;
+        const offset = (page - 1) * limit;
+        const q = normalizeText(req.query.q || req.query.search);
+        const status = isClosedStatus(req.query.status) ? req.query.status : '';
+        const filter = buildOrderFilter({ scope: 'closed', status, q });
 
-        let page = Number(req.query.page) || 1;
-        let limit = 10;
-        let offset = (page - 1) * limit;
+        const [orderRows] = await connection.query(
+            `SELECT ${ORDER_OWNER_SELECT}
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}
+             ORDER BY orders.id DESC
+             LIMIT ? OFFSET ?`,
+            [...filter.params, limit, offset]
+        );
+        const [summaryRows] = await connection.query(
+            `SELECT COUNT(*) AS total, COALESCE(SUM(orders.price), 0) AS price_count
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}`,
+            filter.params
+        );
+        const total = Number(summaryRows[0]?.total || 0);
 
-        const query = `SELECT ${ORDER_OWNER_SELECT}
-            FROM orders
-            ${ORDER_OWNER_JOINS}
-            WHERE orders.status = ?
-            LIMIT ${limit} OFFSET ${offset}`;
-        const [orderRows, orderFields] = await connection.query(query, [RECEIVED_STATUS]);
-        const [priceCountRows] = await connection.query('SELECT SUM(price) as price_count FROM orders WHERE status = ?', [RECEIVED_STATUS]);
-        let price_count = priceCountRows[0].price_count;
-
-        const [totalRows] = await connection.query('SELECT COUNT(*) as total FROM orders WHERE status = ?', [RECEIVED_STATUS]);
-        let totalPages = Math.ceil(totalRows[0].total / limit);
-        let pages = Array.from({length: totalPages}, (_, i) => {
-            return {
-                number: i + 1,
-                isCurrent: i + 1 === page
-            };
-        });
-
-        connection.release();
         res.render('orders-archive', {
             title: 'Архив заказов',
-            orders: orderRows,
-            page: page,
-            totalPages: totalPages,
-            prevPage: page > 1 ? page - 1 : null,
-            nextPage: page < totalPages ? page + 1 : null,
-            pages: pages,
+            orders: orderRows.map(attachOrderUi),
+            hasRows: orderRows.length > 0,
+            total,
+            price_count: formatMoney(summaryRows[0]?.price_count),
+            filters: { q, status },
+            hasFilters: Boolean(q || status),
+            statusOptions: statusOptions(status, CLOSED_STATUSES),
+            currentUrl: buildUrl('/ordersarchive', { q, status }, page),
+            alert: req.query.removed || req.query.error || null,
+            ...pagination('/ordersarchive', page, total, limit, { q, status }),
             isAuthenticated: req.session.isAuthenticated,
             user: req.session.user,
-            price_count: price_count
         });
-        console.log('The data from orders table: \n', orderRows);
-        mlog('Архивные заказы были отображены!');
     } catch (err) {
         console.log(err);
         mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось загрузить архив.');
+    } finally {
+        if (connection) connection.release();
     }
 };
 
 export const manageOrders = async (req, res) => {
+    let connection;
     try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
+        connection = await pool.getConnection();
+        const page = normalizePage(req.query.page);
+        const limit = 10;
+        const offset = (page - 1) * limit;
+        const q = normalizeText(req.query.q || req.query.search);
+        const status = isActiveStatus(req.query.status) ? req.query.status : '';
+        const filter = buildOrderFilter({ scope: 'active', status, q });
 
-        let page = Number(req.query.page) || 1;
-        let limit = 10;
-        let offset = (page - 1) * limit;
-
-        let searchTerm = req.query.search;
-        let query, totalQuery, priceCountQuery;
-        let params = [];
-
-        if (searchTerm) {
-            query = `SELECT ${ORDER_OWNER_SELECT}
-                FROM orders
-                ${ORDER_OWNER_JOINS}
-                WHERE orders.status = ?
-                LIMIT ${limit} OFFSET ${offset}`;
-            totalQuery = 'SELECT COUNT(*) as total FROM orders WHERE status = ?';
-            priceCountQuery = 'SELECT SUM(price) as price_count FROM orders WHERE status = ?';
-            params = [searchTerm];
-        } else {
-            query = `SELECT ${ORDER_OWNER_SELECT}
-                FROM orders
-                ${ORDER_OWNER_JOINS}
-                WHERE orders.status != ?
-                LIMIT ${limit} OFFSET ${offset}`;
-            totalQuery = 'SELECT COUNT(*) as total FROM orders WHERE status != ?';
-            priceCountQuery = 'SELECT SUM(price) as price_count FROM orders WHERE status != ?';
-            params = [RECEIVED_STATUS];
-        }
-
-        const [orderRows, orderFields] = await connection.query(query, params);
-        const [totalRows] = await connection.query(totalQuery, params);
-        const [priceCountRows] = await connection.query(priceCountQuery, params);
-        let price_count = priceCountRows[0].price_count;
-
-        let totalPages = Math.ceil(totalRows[0].total / limit);
-        let pages = Array.from({length: totalPages}, (_, i) => {
-            return {
-                number: i + 1,
-                isCurrent: i + 1 === page
-            };
-        });
-
-        connection.release();
+        const [orderRows] = await connection.query(
+            `SELECT ${ORDER_OWNER_SELECT}
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}
+             ORDER BY orders.id DESC
+             LIMIT ? OFFSET ?`,
+            [...filter.params, limit, offset]
+        );
+        const [summaryRows] = await connection.query(
+            `SELECT COUNT(*) AS total, COALESCE(SUM(orders.price), 0) AS price_count
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}`,
+            filter.params
+        );
+        const total = Number(summaryRows[0]?.total || 0);
 
         res.render('manage-orders', {
-            title: 'Все заказы', 
-            orders: orderRows, 
-            page: page,
-            totalPages: totalPages,
-            prevPage: page > 1 ? page - 1 : null,
-            nextPage: page < totalPages ? page + 1 : null,
-            pages: pages,
+            title: 'Активные заказы',
+            orders: orderRows.map(attachOrderUi),
+            hasRows: orderRows.length > 0,
+            total,
+            price_count: formatMoney(summaryRows[0]?.price_count),
+            filters: { q, status },
+            hasFilters: Boolean(q || status),
+            statusOptions: statusOptions(status, ACTIVE_STATUSES),
+            currentUrl: buildUrl('/manageorders', { q, status }, page),
+            alert: req.query.updated || req.query.removed || req.query.error || null,
+            ...pagination('/manageorders', page, total, limit, { q, status }),
             isAuthenticated: req.session.isAuthenticated,
             user: req.session.user,
-            price_count: price_count,
-            searchTerm: searchTerm,
-            alert: req.query.updated
         });
-        
-        console.log('The data from orders table: \n', orderRows);
     } catch (err) {
         console.log(err);
         mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось загрузить активные заказы.');
+    } finally {
+        if (connection) connection.release();
     }
 };
 
-
-
-
-
-// USERS PART
-
-    //view orders
-    export const myorders = async (req, res) => {
-        try {
-            const connection = await pool.getConnection();
-            console.log('Connected as ID' + connection.threadId);
-            mlog('Connected as ID' + connection.threadId);
-            const pageData = await loadMyOrdersPage(connection, req);
-            connection.release();
-            renderMyOrders(res, req, pageData);
-            console.log('The data from orders table: \n', pageData.rows);
-        } catch (err) {
-            console.log(err);
-            mlog(err);
-        }
-    };
-
+export const myorders = async (req, res) => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const pageData = await loadMyOrdersPage(connection, req);
+        renderMyOrders(res, req, pageData);
+    } catch (err) {
+        console.log(err);
+        mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось загрузить ваши заказы.');
+    } finally {
+        if (connection) connection.release();
+    }
+};
 
 export const findOrders = async (req, res) => {
-    try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        let searchTerm = req.body.search;
-
-        const pageData = await loadMyOrdersPage(connection, req, searchTerm);
-        connection.release();
-
-        renderMyOrders(res, req, pageData);
-        console.log('The data from orders table: \n', pageData.rows);
-    } catch (err) {
-        console.log(err);
-        mlog(err);
-    }
+    const q = normalizeText(req.body.search || req.body.q);
+    res.redirect(buildUrl('/myorders', { q }, 1));
 };
-
 
 export const formOrder = (req, res) => {
-    res.render('add-order', {title: 'Новый заказ', isAuthenticated: req.session.isAuthenticated, user: req.session.user});
+    res.render('add-order', {
+        title: 'Новый заказ',
+        order: {},
+        cancelUrl: '/myorders',
+        isAuthenticated: req.session.isAuthenticated,
+        user: req.session.user,
+    });
 };
 
-//add new order
 export const createOrder = async (req, res) => {
-    const { good, quantity, price, link, arrival_date } = req.body;
+    let connection;
+    const { good, quantity, link, arrival_date } = req.body;
+    const price = normalizePrice(req.body.price);
     const ssoAuthorId = getSsoUserId(req);
     try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        const query = 'INSERT INTO orders SET good = ?, quantity = ?, price = ?, link = ?, creation_date = NOW(), arrival_date = ?, author_id = NULL, sso_author_id = ?, status = "На рассмотрении"';
-        await connection.query(query, [good, quantity, price, link, arrival_date, ssoAuthorId]);
-        const pageData = await loadMyOrdersPage(connection, req);
-        connection.release();
-
-        renderMyOrders(res, req, pageData, 'Новый заказ успешно добавлен!');
-        console.log('The data from orders table: \n', pageData.rows);
-        mlog('Был добавлен новый заказ!');
+        connection = await pool.getConnection();
+        await connection.query(
+            `INSERT INTO orders
+             SET good = ?, quantity = ?, price = ?, link = ?, creation_date = NOW(),
+                 arrival_date = ?, author_id = NULL, sso_author_id = ?, status = ?`,
+            [good, quantity, price, link, arrival_date, ssoAuthorId, ORDER_STATUS.PENDING]
+        );
+        mlog('Добавлен новый заказ.');
+        res.redirect('/myorders?created=' + encodeURIComponent('Новый заказ добавлен.'));
     } catch (err) {
         console.log(err);
         mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось создать заказ.');
+    } finally {
+        if (connection) connection.release();
     }
 };
 
-//edit order
 export const editOrder = async (req, res) => {
+    let connection;
     try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        const query = 'SELECT * FROM orders WHERE id = ? AND sso_author_id = ?';
-        const [rows, fields] = await connection.query(query, [req.params.id, getSsoUserId(req)]);
-        connection.release();
+        connection = await pool.getConnection();
+        const [rows] = await connection.query(
+            'SELECT * FROM orders WHERE id = ? AND sso_author_id = ? LIMIT 1',
+            [req.params.id, getSsoUserId(req)]
+        );
         if (rows.length === 0) {
-            return res.redirect('/myorders');
+            return res.redirect('/myorders?error=' + encodeURIComponent('Заказ не найден.'));
         }
-        res.render('edit-order', {title: 'Изменение заказа', rows, isAuthenticated: req.session.isAuthenticated, user: req.session.user });
-        console.log('The data from orders table: \n', rows);
+        if (rows[0].status !== ORDER_STATUS.PENDING) {
+            return res.redirect('/myorders?error=' + encodeURIComponent('Редактировать можно только заказ со статусом "На рассмотрении".'));
+        }
+        res.render('edit-order', {
+            title: 'Изменение заказа',
+            order: attachOrderUi(rows[0]),
+            cancelUrl: '/myorders',
+            isAuthenticated: req.session.isAuthenticated,
+            user: req.session.user,
+        });
     } catch (err) {
         console.log(err);
         mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось открыть заказ.');
+    } finally {
+        if (connection) connection.release();
     }
 };
 
-//update order
 export const updateOrder = async (req, res) => {
-    const { good, quantity, price, link, arrival_date } = req.body;
+    let connection;
+    const { good, quantity, link, arrival_date } = req.body;
+    const price = normalizePrice(req.body.price);
     try {
-        const connection = await pool.getConnection();
-        console.log('Connected as ID' + connection.threadId);
-        mlog('Connected as ID' + connection.threadId);
-        const query = 'UPDATE orders SET good = ?, quantity = ?, price = ?, link =?, arrival_date = ? WHERE id = ? AND sso_author_id = ?';
-        await connection.query(query, [good, quantity, price, link, arrival_date, req.params.id, getSsoUserId(req)]);
-        const pageData = await loadMyOrdersPage(connection, req);
-        connection.release();
-
-        renderMyOrders(res, req, pageData, 'Данные заказа успешно обновлены!');
-        console.log('The data from orders table: \n', pageData.rows);
-        mlog('Заказ был отредактирован пользователем!');
+        connection = await pool.getConnection();
+        const [result] = await connection.query(
+            `UPDATE orders
+             SET good = ?, quantity = ?, price = ?, link = ?, arrival_date = ?
+             WHERE id = ? AND sso_author_id = ? AND status = ?`,
+            [good, quantity, price, link, arrival_date, req.params.id, getSsoUserId(req), ORDER_STATUS.PENDING]
+        );
+        if (result.affectedRows === 0) {
+            return res.redirect('/myorders?error=' + encodeURIComponent('Заказ уже нельзя редактировать.'));
+        }
+        mlog('Заказ был отредактирован пользователем.');
+        res.redirect('/myorders?updated=' + encodeURIComponent('Данные заказа обновлены.'));
     } catch (err) {
         console.log(err);
         mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось обновить заказ.');
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+export const cancelOrder = async (req, res) => {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const [result] = await connection.query(
+            'UPDATE orders SET status = ? WHERE id = ? AND sso_author_id = ? AND status = ?',
+            [ORDER_STATUS.CANCELLED, req.params.id, getSsoUserId(req), ORDER_STATUS.PENDING]
+        );
+        const key = result.affectedRows > 0 ? 'cancelled' : 'error';
+        const text = result.affectedRows > 0
+            ? 'Заказ отменён.'
+            : 'Отменить можно только заказ со статусом "На рассмотрении".';
+        res.redirect(`/myorders?${key}=${encodeURIComponent(text)}`);
+    } catch (err) {
+        console.log(err);
+        mlog(err);
+        renderError(res, req, 500, 'Ошибка сервера', 'Не удалось отменить заказ.');
+    } finally {
+        if (connection) connection.release();
     }
 };

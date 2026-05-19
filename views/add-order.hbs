@@ -1,20 +1,20 @@
-<div class="row" style="padding-top: 80px;">
-    <div class="col-12 d-flex justify-content-center"><h2>Оформить новый заказ</h2></div>
-</div>
-<div class="col-12 d-flex justify-content-center">
-    <nav aria-label="breadcrumb">
-    <ol class="breadcrumb">
+<div class="page-header text-center">
+  <h2>Оформить новый заказ</h2>
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb justify-content-center">
       <li class="breadcrumb-item"><a href="/myorders">Мои заказы</a></li>
-      <li class="breadcrumb-item active" aria-current="page">Оформление заказа</li>
+      <li class="breadcrumb-item active" aria-current="page">Новый заказ</li>
     </ol>
   </nav>
 </div>
-<form action="/myorders/addorder" class="row g-3 needs-validation" method="POST">
-    {{> order-form}}
+
+{{> notice}}
+
+<form action="/myorders/addorder" class="row g-3 needs-validation" method="POST" novalidate>
+  {{> order-form}}
 </form>
 
 <div id="snackbar">{{alert}}</div>
-
 <script src="/javascript/snackbar.js"></script>
 <script>
   if ("{{alert}}") {

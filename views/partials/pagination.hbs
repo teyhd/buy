@@ -1,0 +1,13 @@
+{{#if (hasPages pages)}}
+<nav class="pagination center" aria-label="Навигация по страницам">
+  {{#if prevUrl}}
+    <a href="{{prevUrl}}" aria-label="Предыдущая страница">«</a>
+  {{/if}}
+  {{#each pages}}
+    <a class="{{#if isCurrent}}active{{/if}}" href="{{url}}">{{number}}</a>
+  {{/each}}
+  {{#if nextUrl}}
+    <a href="{{nextUrl}}" aria-label="Следующая страница">»</a>
+  {{/if}}
+</nav>
+{{/if}}

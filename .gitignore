@@ -27,6 +27,7 @@ build/
 coverage/
 .cache/
 .npm/
+.playwright-mcp/
 
 # Temporary files
 *.tmp

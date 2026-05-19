@@ -1,50 +1,88 @@
-<div class="container mt-5 pt-3">
-  {{#if removedMessage}}
-  <div class="alert alert-success alert-dismissible fade show" role="alert">
-    {{removedMessage}}
-    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-  </div>
-  {{/if}}
-  <div class="row">
-    <div class="col-12"><h1>Архив заказов</h1></div>
+<div class="page-header">
+  {{> notice}}
+  <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+    <div>
+      <h1>Архив заказов</h1>
+      <div class="text-muted">Найдено: {{total}} · сумма: {{price_count}} руб.</div>
+    </div>
   </div>
 
-<table class="table table-boarded">
-  <thead class="thead-dark">
-    <tr>
-      <th scope="col">Автор</th>
-      <th scope="col">Товар</th>
-      <th scope="col">Количество</th>
-      <th scope="col">Стоимость</th>
-      <th scope="col">Ссылка на товар</th>
-      <th scope="col">Дата оформления заказа</th>
-      <th scope="col">Желаемая дата доставки</th>
-    </tr>
-  </thead>
-<tbody>
-    {{#each orders}}<tr>
-        <td><a href="/dashboard/vieworder/{{this.owner_type}}/{{this.owner_ref}}">{{this.owner_label}}</a></td>
+  <form class="row g-2 align-items-end mt-3" method="GET" action="/ordersarchive" novalidate>
+    <div class="col-12 col-lg-5">
+      <label class="form-label" for="archive-q">Поиск</label>
+      <input class="form-control" id="archive-q" type="search" name="q" value="{{filters.q}}" placeholder="Товар, автор или ссылка">
+    </div>
+    <div class="col-12 col-md-4 col-lg-3">
+      <label class="form-label" for="archive-status">Статус</label>
+      <select class="form-select" id="archive-status" name="status">
+        <option value="">Все закрытые</option>
+        {{#each statusOptions}}
+          <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+        {{/each}}
+      </select>
+    </div>
+    <div class="col-12 col-md-auto d-flex gap-2">
+      <button class="btn btn-outline-dark" type="submit">Найти</button>
+      <a class="btn btn-outline-secondary" href="/ordersarchive">Сбросить</a>
+    </div>
+  </form>
+</div>
+
+{{#if hasRows}}
+<div class="table-responsive">
+  <table class="table table-bordered align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th scope="col">Автор</th>
+        <th scope="col">Товар</th>
+        <th scope="col">Количество</th>
+        <th scope="col">Стоимость</th>
+        <th scope="col">Ссылка</th>
+        <th scope="col">Дата заказа</th>
+        <th scope="col">Желаемая доставка</th>
+        <th scope="col">Статус</th>
+        <th scope="col" class="text-end">Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#each orders}}
+      <tr>
+        <td><a href="/dashboard/vieworder/{{this.owner_type}}/{{this.owner_ref}}?scope=closed">{{this.owner_label}}</a></td>
         <td>{{this.good}}</td>
         <td>{{this.quantity}}</td>
-        <td>{{this.price}} руб.</td>
-        <td><a href="{{this.link}}">{{this.link}}</a></td>
+        <td>{{this.price_label}} руб.</td>
+        <td><a class="table-link" href="{{this.link}}" target="_blank" rel="noopener noreferrer">{{this.link_label}}</a></td>
         <td>{{formatDate this.creation_date}}</td>
         <td>{{formatDate this.arrival_date}}</td>
-    {{/each}}
-</tbody>
-</table>
-<div class="pagination center">
-  {{#if prevPage}}
-    <a href="/ordersarchive?page={{prevPage}}">«</a>
-  {{/if}}
-    {{#each pages}}
-        {{#if isCurrent}}
-            <a class="active" href="/ordersarchive?page={{number}}">{{number}}</a>
-        {{else}}
-            <a href="/ordersarchive?page={{number}}">{{number}}</a>
-        {{/if}}
-    {{/each}}
-  {{#if nextPage}}
-    <a href="/ordersarchive?page={{nextPage}}">»</a>
-  {{/if}}
+        <td>{{> status-badge}}</td>
+        <td class="text-end">
+          <form action="/ordersarchive/{{this.id}}/delete" method="POST" class="d-inline" onsubmit="return confirm('Удалить закрытый заказ?');">
+            <input type="hidden" name="return_to" value="{{../currentUrl}}">
+            <button type="submit" class="btn btn-outline-danger btn-sm">Удалить</button>
+          </form>
+        </td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>
 </div>
+{{else}}
+  {{#if hasFilters}}
+    {{> empty-state title="Ничего не найдено" text="Измените поиск или сбросьте фильтры."}}
+  {{else}}
+    {{> empty-state title="В архиве нет заказов" text="Закрытые и отменённые заявки будут отображаться здесь."}}
+  {{/if}}
+{{/if}}
+
+{{> pagination}}
+
+<div id="snackbar">{{alert}}</div>
+<script src="/javascript/snackbar.js"></script>
+<script>
+  if ("{{alert}}") {
+    var message = "{{alert}}";
+    if (message !== undefined && message !== null) {
+      snackBAR(message);
+    }
+  }
+</script>

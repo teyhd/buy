@@ -1,39 +1,41 @@
- 
-  <div class="col-12 d-flex justify-content-center">
-        <div class="form-floating mb-3" style="width: 500px;">
-            <input type="text" class="form-control" id="floatingInput" value="{{this.good}}" placeholder="Название" name="good" required minlength="2" maxlength="50">
-            <label for="floatingInput">Название</label>
-        </div>
+<div class="order-form mx-auto">
+  <div class="form-floating mb-3">
+    <input type="text" class="form-control {{#if fieldErrors.good}}is-invalid{{/if}}" id="order-good" value="{{order.good}}" placeholder="Название" name="good" required minlength="2" maxlength="50">
+    <label for="order-good">Название</label>
+    {{#if fieldErrors.good}}<div class="invalid-feedback">{{fieldErrors.good}}</div>{{/if}}
+  </div>
+
+  <div class="row g-2">
+    <div class="col-12 col-md-6">
+      <div class="form-floating mb-3">
+        <input type="number" min="1" max="500" class="form-control {{#if fieldErrors.quantity}}is-invalid{{/if}}" id="order-quantity" value="{{order.quantity}}" placeholder="Количество" name="quantity" required>
+        <label for="order-quantity">Количество</label>
+        {{#if fieldErrors.quantity}}<div class="invalid-feedback">{{fieldErrors.quantity}}</div>{{/if}}
+      </div>
     </div>
-        <div class="col-12 d-flex justify-content-center">
-    <div class="form-floating mb-3" style="width: 245px;">
-        <input type="number" min="1" max="500" class="form-control" id="floatingInput" value="{{this.quantity}}" placeholder="Количество" name="quantity" required>
-        <label for="floatingInput">Количество</label>
+    <div class="col-12 col-md-6">
+      <div class="form-floating mb-3">
+        <input type="number" step="0.01" min="1" max="1000000" class="form-control {{#if fieldErrors.price}}is-invalid{{/if}}" id="order-price" value="{{order.price}}" placeholder="Стоимость" name="price" required>
+        <label for="order-price">Стоимость</label>
+        {{#if fieldErrors.price}}<div class="invalid-feedback">{{fieldErrors.price}}</div>{{/if}}
+      </div>
     </div>
-    <div class="form-floating mb-3 ms-2" style="width: 245px;">
-        <input type="number" step="0.01" min="1" max="1000000" class="form-control" id="floatingInput" value="{{this.price}}" placeholder="Стоимость" name="price" required>
-        <label for="floatingInput">Стоимость</label>
-    </div>
+  </div>
+
+  <div class="form-floating mb-3">
+    <input type="url" class="form-control {{#if fieldErrors.link}}is-invalid{{/if}}" id="order-link" value="{{order.link}}" placeholder="Ссылка" name="link" required>
+    <label for="order-link">Ссылка</label>
+    {{#if fieldErrors.link}}<div class="invalid-feedback">{{fieldErrors.link}}</div>{{/if}}
+  </div>
+
+  <div class="form-floating mb-3">
+    <input type="date" class="form-control {{#if fieldErrors.arrival_date}}is-invalid{{/if}}" id="order-arrival-date" value="{{formatDate order.arrival_date}}" placeholder="Желаемая дата доставки" name="arrival_date" required>
+    <label for="order-arrival-date">Желаемая дата доставки</label>
+    {{#if fieldErrors.arrival_date}}<div class="invalid-feedback">{{fieldErrors.arrival_date}}</div>{{/if}}
+  </div>
+
+  <div class="d-flex justify-content-end gap-2">
+    <a href="{{cancelUrl}}" class="btn btn-outline-secondary">Отмена</a>
+    <button class="btn btn-primary" type="submit">Сохранить</button>
+  </div>
 </div>
-
-
-<div class="col-12 d-flex justify-content-center">
-    <div class="form-floating mb-3" style="width: 500px;">
-        <input type="url" class="form-control" id="floatingInput" value="{{this.link}}" placeholder="Ссылка" name="link" required>
-        <label for="floatingInput">Ссылка</label>
-    </div>
-</div>
-
-<div class="col-12 d-flex justify-content-center">
-    <div class="form-floating mb-3" style="width: 500px;">
-        <input type="date" class="form-control" id="floatingInput" value="{{formatDate this.arrival_date}}" placeholder="Желаемая дата доставки" name="arrival_date" required>
-        <label for="floatingInput">Желаемая дата доставки</label>
-    </div>
-</div>
-
-
-    <div class="col-12 d-flex justify-content-center">
-        <div>
-            <button class="btn btn-primary" type="submit">Сохранить</button>
-        </div>
-    </div>

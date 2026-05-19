@@ -1,71 +1,85 @@
-<div class="row" style="padding-top: 80px;">
-{{#if removedMessage}}
-<div class="alert alert-success alert-dismissible fade show" role="alert">
-{{removedMessage}}
-  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+<div class="page-header">
+  {{> notice}}
+  <div class="d-flex flex-column flex-md-row justify-content-between gap-3 align-items-md-center">
+    <div>
+      <h1>Мои заказы</h1>
+      <div class="text-muted">Всего найдено: {{total}}</div>
+    </div>
+    <a href="/myorders/addorder" class="btn btn-primary">Добавить заказ</a>
+  </div>
+
+  <form class="row g-2 align-items-end mt-3" method="GET" action="/myorders" novalidate>
+    <div class="col-12 col-md-5">
+      <label class="form-label" for="myorders-q">Поиск</label>
+      <input class="form-control" id="myorders-q" type="search" placeholder="Товар или ссылка" name="q" value="{{filters.q}}">
+    </div>
+    <div class="col-12 col-md-4">
+      <label class="form-label" for="myorders-status">Статус</label>
+      <select class="form-select" id="myorders-status" name="status">
+        <option value="">Все статусы</option>
+        {{#each statusOptions}}
+          <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+        {{/each}}
+      </select>
+    </div>
+    <div class="col-12 col-md-auto d-flex gap-2">
+      <button class="btn btn-outline-dark" type="submit">Найти</button>
+      <a class="btn btn-outline-secondary" href="/myorders">Сбросить</a>
+    </div>
+  </form>
 </div>
+
+{{#if hasRows}}
+<div class="table-responsive">
+  <table class="table table-bordered align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th scope="col">Название</th>
+        <th scope="col">Количество</th>
+        <th scope="col">Стоимость</th>
+        <th scope="col">Ссылка</th>
+        <th scope="col">Дата заказа</th>
+        <th scope="col">Желаемая доставка</th>
+        <th scope="col">Статус</th>
+        <th scope="col" class="text-end">Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#each rows}}
+      <tr>
+        <td>{{this.good}}</td>
+        <td>{{this.quantity}}</td>
+        <td>{{this.price_label}} руб.</td>
+        <td><a class="table-link" href="{{this.link}}" target="_blank" rel="noopener noreferrer">{{this.link_label}}</a></td>
+        <td>{{formatDate this.creation_date}}</td>
+        <td>{{formatDate this.arrival_date}}</td>
+        <td>{{> status-badge}}</td>
+        <td class="text-end table-actions">
+          {{#if this.is_pending}}
+            <a href="/myorders/editorder/{{this.id}}" class="btn btn-light btn-sm"><i class="bi bi-pencil"></i> Изменить</a>
+            <form action="/myorders/{{this.id}}/cancel" method="POST" class="d-inline" onsubmit="return confirm('Отменить заказ?');">
+              <button type="submit" class="btn btn-outline-secondary btn-sm">Отменить</button>
+            </form>
+          {{else}}
+            <span class="text-muted">Недоступно</span>
+          {{/if}}
+        </td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+  {{#if hasFilters}}
+    {{> empty-state title="Ничего не найдено" text="Измените поиск или сбросьте фильтры."}}
+  {{else}}
+    {{> empty-state title="У вас пока нет заказов" text="Создайте первый заказ, когда понадобится закупка."}}
+  {{/if}}
 {{/if}}
 
-
-    <div class="col-12"><h1>Мои заказы</h1></div>
-    <div class="col-12 d-flex justify-content-start align-items-center">
-        <a href="/myorders/addorder" type="button" class="btn btn-primary me-2">Добавить</a>
-        <form class="d-flex" method="POST" action="/myorders" novalidate>
-            <input class="form-control me-2" type="search" placeholder="Найти товар..." name="search" style="width: 150px;" aria-label="Search">
-            <button class="btn btn-outline-dark" type="submit">Поиск</button>
-        </form>
-    </div>
-</div>
-
-<table class="table table-boarded">
-  <thead class="thead-dark">
-    <tr>
-      <th scope="col">Название</th>
-      <th scope="col">Количество</th>
-      <th scope="col">Стоимость</th>
-      <th scope="col">Ссылка</th>
-      <th scope="col">Дата оформления заказа</th>
-      <th scope="col">Желаемая дата доставки</th>
-      <th scope="col">Статус</th>
-      <th scope="col" class="text-end">Действия</th>
-    </tr>
-  </thead>
-  <tbody>
-
-    {{#each rows}}
-    <tr>
-      <td>{{this.good}}</td>
-      <td>{{this.quantity}}</td>
-      <td>{{this.price}} руб.</td>
-      <td><a href="{{this.link}}">{{this.link}}</a></td>
-      <td>{{formatDate this.creation_date}}</td>
-      <td>{{formatDate this.arrival_date}}</td>
-      <td>{{this.status}}</td>
-      <td class="text-end">
-        <a href="/myorders/editorder/{{this.id}}" type="button" class="btn btn-light btn-small"><i class="bi bi-pencil"></i>Изменить</a>
-      </td>
-    </tr>
-    {{/each}}
-  </tbody>
-</table>
-<div class="pagination center">
-  {{#if prevPage}}
-    <a href="/myorders?page={{prevPage}}">«</a>
-  {{/if}}
-    {{#each pages}}
-        {{#if isCurrent}}
-            <a class="active" href="/myorders?page={{number}}">{{number}}</a>
-        {{else}}
-            <a href="/myorders?page={{number}}">{{number}}</a>
-        {{/if}}
-    {{/each}}
-  {{#if nextPage}}
-    <a href="/myorders?page={{nextPage}}">»</a>
-  {{/if}}
-</div>
+{{> pagination}}
 
 <div id="snackbar">{{alert}}</div>
-
 <script src="/javascript/snackbar.js"></script>
 <script>
   if ("{{alert}}") {

@@ -1,76 +1,66 @@
-<div class="row" style="padding-top: 80px;">
-     {{#if error}}
-    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        {{error}}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-    {{/if}}
-    {{#if removedMessage}}
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-        {{removedMessage}}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-    {{/if}}
-</div>
-<div class="view-user p-5">
-  {{#with viewedUser}}
-  <div>
-    <div class="col text-center">
-      <h3>{{this.surname}} {{this.name}} {{this.patname}}</h3>
-    </div>
-  </div>
+<div class="page-header">
+  {{> notice}}
   <nav aria-label="breadcrumb">
-  <ol class="breadcrumb">
-    <li class="breadcrumb-item"><a href="/dashboard">Панель управления</a></li>
-    <li class="breadcrumb-item active" aria-current="page">Заказчик</li>
-  </ol>
-</nav>
-  {{/with}}
-  <div class="row" style="margin-bottom: -45px;">
-    <div class="col">
-      <table class="table">
-        <thead>
-          <tr>
-            <th scope="col">Логин</th>
-            <th scope="col">Название товара</th>
-            <th scope="col">Количество</th>
-            <th scope="col">Стоимость</th>
-            <th scope="col">Ссылка</th>
-            <th scope="col">Дата оформления заказа</th>
-            <th scope="col">Желаемая дата доставки</th>
-            <th scope="col">Статус заказа</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{#each orders}}
-          <tr>
-            <th scope="row">{{../viewedUser.email}}</th>
-            <td>{{this.good}}</td>
-            <td>{{this.quantity}}</td>
-            <td>{{this.price}} руб.</td>
-            <td><a href="{{this.link}}">{{this.link}}</a></td>
-            <td>{{formatDate this.creation_date}}</td>
-            <td>{{formatDate this.arrival_date}}</td>
-            <td>{{this.status}}</td>
-          {{/each}}
-        </tbody>
-      </table>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/dashboard">Заказчики</a></li>
+      <li class="breadcrumb-item active" aria-current="page">История заказчика</li>
+    </ol>
+  </nav>
+
+  <div class="d-flex flex-column flex-md-row justify-content-between gap-3 align-items-md-center">
+    <div>
+      <h1>{{viewedUser.label}}</h1>
+      <div class="text-muted">{{viewedUser.email}} · заказов: {{total}}</div>
     </div>
   </div>
+
+  <form class="row g-2 align-items-end mt-3" method="GET" action="/dashboard/vieworder/{{ownerSource}}/{{viewedUser.id}}" novalidate>
+    <div class="col-12 col-md-4">
+      <label class="form-label" for="owner-scope">Период</label>
+      <select class="form-select" id="owner-scope" name="scope">
+        {{#each scopeOptions}}
+          <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+        {{/each}}
+      </select>
+    </div>
+    <div class="col-12 col-md-auto d-flex gap-2">
+      <button class="btn btn-outline-dark" type="submit">Показать</button>
+      <a class="btn btn-outline-secondary" href="/dashboard/vieworder/{{ownerSource}}/{{viewedUser.id}}?scope=all">Все</a>
+    </div>
+  </form>
 </div>
 
-<div class="pagination center">
-  {{#if prevPage}}
-    <a href="/dashboard/vieworder/{{ownerSource}}/{{viewedUser.id}}?page={{prevPage}}">«</a>
-  {{/if}}
-    {{#each pages}}
-        {{#if isCurrent}}
-            <a class="active" href="/dashboard/vieworder/{{../ownerSource}}/{{../viewedUser.id}}?page={{number}}">{{number}}</a>
-        {{else}}
-            <a href="/dashboard/vieworder/{{../ownerSource}}/{{../viewedUser.id}}?page={{number}}">{{number}}</a>
-        {{/if}}
-    {{/each}}
-  {{#if nextPage}}
-    <a href="/dashboard/vieworder/{{ownerSource}}/{{viewedUser.id}}?page={{nextPage}}">»</a>
-  {{/if}}
+{{#if hasRows}}
+<div class="table-responsive">
+  <table class="table table-bordered align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th scope="col">Товар</th>
+        <th scope="col">Количество</th>
+        <th scope="col">Стоимость</th>
+        <th scope="col">Ссылка</th>
+        <th scope="col">Дата заказа</th>
+        <th scope="col">Желаемая доставка</th>
+        <th scope="col">Статус</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#each orders}}
+      <tr>
+        <td>{{this.good}}</td>
+        <td>{{this.quantity}}</td>
+        <td>{{this.price_label}} руб.</td>
+        <td><a class="table-link" href="{{this.link}}" target="_blank" rel="noopener noreferrer">{{this.link_label}}</a></td>
+        <td>{{formatDate this.creation_date}}</td>
+        <td>{{formatDate this.arrival_date}}</td>
+        <td>{{> status-badge}}</td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>
 </div>
+{{else}}
+  {{> empty-state title="Заказов в этом разделе нет" text="Смените фильтр периода, чтобы посмотреть другую историю."}}
+{{/if}}
+
+{{> pagination}}

@@ -1,5 +1,94 @@
 /*pagination*/
 
+body {
+    background: #f8f9fa;
+}
+
+.page-header {
+    padding-top: 80px;
+    margin-bottom: 24px;
+}
+
+.table {
+    background: #fff;
+}
+
+.table th,
+.table td {
+    vertical-align: middle;
+}
+
+.table-link {
+    display: inline-block;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+    white-space: nowrap;
+}
+
+.table-actions {
+    min-width: 190px;
+}
+
+.status-form {
+    display: grid;
+    grid-template-columns: minmax(145px, 1fr) auto;
+    gap: 6px;
+    align-items: center;
+    min-width: 250px;
+}
+
+.status-badge {
+    white-space: nowrap;
+}
+
+.order-form {
+    width: 100%;
+    max-width: 560px;
+}
+
+.empty-state {
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 28px;
+    text-align: center;
+}
+
+.empty-state__title {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.empty-state__text {
+    color: #6c757d;
+    margin-top: 6px;
+}
+
+.error-page {
+    margin: 120px auto 0;
+    max-width: 620px;
+    text-align: center;
+}
+
+.error-code {
+    color: #6c757d;
+    font-size: 48px;
+    font-weight: 700;
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        padding-top: 72px;
+    }
+
+    .status-form {
+        grid-template-columns: 1fr;
+        min-width: 180px;
+    }
+}
+
 /* links for splitting at pages */
 .pagination a {
     color: black;

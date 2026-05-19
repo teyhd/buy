@@ -1,24 +1,20 @@
-<div class="row" style="padding-top: 80px;">
-    <div class="col-12 d-flex justify-content-center"><h2>Обновить данные заказа</h2></div>
-</div>
-<div class="col-12 d-flex justify-content-center">
+<div class="page-header text-center">
+  <h2>Обновить данные заказа</h2>
   <nav aria-label="breadcrumb">
-    <ol class="breadcrumb">
-      <li class="breadcrumb-item"><a href="/manageorders">Панель управления</a></li>
-      <li class="breadcrumb-item active" aria-current="page">Изменение данных заказа</li>
+    <ol class="breadcrumb justify-content-center">
+      <li class="breadcrumb-item"><a href="/manageorders">Активные заказы</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Изменение заказа</li>
     </ol>
   </nav>
 </div>
 
+{{> notice}}
 
-{{#each rows}}
-<form action="/manageorders/editorderadmin/{{this.id}}" class="row g-3 needs-validation" method="POST" novalidate>
-    {{> edit-order-admin}}
+<form action="/manageorders/editorderadmin/{{order.id}}" class="row g-3 needs-validation" method="POST" novalidate>
+  {{> edit-order-admin}}
 </form>
-{{/each}}
 
 <div id="snackbar">{{alert}}</div>
-
 <script src="/javascript/snackbar.js"></script>
 <script>
   if ("{{alert}}") {

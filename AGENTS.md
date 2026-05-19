@@ -65,7 +65,7 @@ This is the single source of truth for coding agents in this repository. It repl
 - `orders.author_id` is legacy-only and references local `users.id` for old orders.
 - Local `users` is legacy-only for historical order display; do not use it for new authentication or user management.
 - User role boundary comes from JWT claim `right[]` filtered by `SSO_SERVICE_ID=12`; `role_id=5` is admin, other positive roles are regular users.
-- Order statuses are `На рассмотрении`, `Закупаем`, `Доставляем`, `Ожидает получения`, `Получен`.
+- Order statuses are `На рассмотрении`, `Закупаем`, `Доставляем`, `Ожидает получения`, `Получен`, `Отменен`.
 - Do not introduce schema changes without explicit user need.
 - If schema changes are required, keep SQL changes in `sql_database` unless the user asks for a migration structure.
 - Never run destructive database operations without explicit user approval.
