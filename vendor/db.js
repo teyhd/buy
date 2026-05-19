@@ -69,6 +69,7 @@ const OWNER_LABEL_SQL = `COALESCE(
     CONCAT('SSO #', orders.sso_author_id),
     CONCAT('Legacy #', orders.author_id)
 )`;
+const OWNER_LABEL_SEARCH_SQL = `CONVERT(${OWNER_LABEL_SQL} USING utf8mb4) COLLATE utf8mb4_unicode_ci`;
 const OWNER_TYPE_SQL = `CASE WHEN orders.sso_author_id IS NULL THEN 'legacy' ELSE 'sso' END`;
 const OWNER_REF_SQL = `COALESCE(orders.sso_author_id, orders.author_id)`;
 const CREATED_BY_LABEL_SQL = `COALESCE(
@@ -317,7 +318,7 @@ function buildOrderFilter({ scope = 'active', status = '', q = '' }) {
 
     if (q) {
         const like = `%${q}%`;
-        where.push(`(orders.good LIKE ? OR orders.link LIKE ? OR ${OWNER_LABEL_SQL} LIKE ?)`);
+        where.push(`(orders.good LIKE ? OR orders.link LIKE ? OR ${OWNER_LABEL_SEARCH_SQL} LIKE ?)`);
         params.push(like, like, like);
     }
 
@@ -556,7 +557,7 @@ function buildAnalyticsFilter(filters) {
     }
     if (filters.q) {
         const like = `%${filters.q}%`;
-        where.push(`(orders.good LIKE ? OR orders.link LIKE ? OR ${OWNER_LABEL_SQL} LIKE ?
+        where.push(`(orders.good LIKE ? OR orders.link LIKE ? OR ${OWNER_LABEL_SEARCH_SQL} LIKE ?
             OR accounting.supplier_name LIKE ? OR accounting.invoice_number LIKE ?
             OR accounting.budget_category LIKE ? OR accounting.cost_center LIKE ?)`);
         params.push(like, like, like, like, like, like, like);
@@ -901,7 +902,7 @@ export const view = async (req, res) => {
         const limit = 10;
         const offset = (page - 1) * limit;
         const q = normalizeText(req.query.q || req.query.search);
-        const whereSql = q ? `WHERE ${OWNER_LABEL_SQL} LIKE ?` : '';
+        const whereSql = q ? `WHERE ${OWNER_LABEL_SEARCH_SQL} LIKE ?` : '';
         const searchParams = q ? [`%${q}%`] : [];
 
         const groupedSelect = `SELECT
