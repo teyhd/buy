@@ -30,7 +30,7 @@
 
   <div class="mb-3">
     <label class="form-label" for="order-arrival-date">Желаемая дата доставки</label>
-    <input type="date" class="form-control {{#if fieldErrors.arrival_date}}is-invalid{{/if}}" id="order-arrival-date" value="{{formatDate order.arrival_date}}" placeholder="Желаемая дата доставки" name="arrival_date" required>
+    <input type="date" class="form-control {{#if fieldErrors.arrival_date}}is-invalid{{/if}}" id="order-arrival-date" value="{{formatDateInput order.arrival_date}}" placeholder="Желаемая дата доставки" name="arrival_date" required>
     {{#if fieldErrors.arrival_date}}<div class="invalid-feedback">{{fieldErrors.arrival_date}}</div>{{/if}}
   </div>
 

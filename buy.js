@@ -46,12 +46,26 @@ const hbs = exphbs.create({
             if (!dateString) {
                 return ''; 
             }
-            let date = new Date(dateString);
-            let day = date.getDate();
-            let month = date.getMonth() + 1;
-            let year = date.getFullYear();
-            day = day < 10 ? '0' + day : day;
-            month = month < 10 ? '0' + month : month;
+            const date = new Date(dateString);
+            if (Number.isNaN(date.getTime())) {
+                return '';
+            }
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}.${month}.${year}`;
+        },
+        formatDateInput: function (dateString) {
+            if (!dateString) {
+                return '';
+            }
+            const date = new Date(dateString);
+            if (Number.isNaN(date.getTime())) {
+                return '';
+            }
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
             return `${year}-${month}-${day}`;
         },
         hasPages: function (pages) {

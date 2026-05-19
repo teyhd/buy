@@ -405,6 +405,16 @@ function dateInputValue(value) {
     return `${year}-${month}-${day}`;
 }
 
+function dateDisplayValue(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}.${month}.${year}`;
+}
+
 function fiscalPeriodFromDate(value) {
     const date = normalizeDate(value);
     return date ? date.slice(0, 7) : '';
@@ -660,7 +670,9 @@ function attachAccountingOrderUi(row) {
         supplier_label: normalizeText(row.supplier_name) || 'Не указан',
         invoice_label: normalizeText(row.invoice_number) || 'Не указан',
         invoice_date_value: dateInputValue(row.invoice_date),
+        invoice_date_label: dateDisplayValue(row.invoice_date),
         payment_date_value: dateInputValue(row.payment_date),
+        payment_date_label: dateDisplayValue(row.payment_date),
         fiscal_period_value: row.fiscal_period || fiscalPeriodFromDate(dateInputValue(row.arrival_date)) || fiscalPeriodFromDate(dateInputValue(row.creation_date)),
         planned_amount_value: plannedAmount,
         actual_amount_value: actualAmount,
