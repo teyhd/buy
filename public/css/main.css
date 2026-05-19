@@ -9,6 +9,24 @@ body {
     margin-bottom: 24px;
 }
 
+.order-page-header {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 680px;
+    text-align: left;
+}
+
+.order-page-header h1 {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 8px;
+}
+
+.order-page-header .breadcrumb {
+    margin-bottom: 0;
+}
+
 .table {
     background: #fff;
 }
@@ -45,7 +63,39 @@ body {
 
 .order-form {
     width: 100%;
-    max-width: 560px;
+    max-width: 680px;
+}
+
+.order-panel {
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 20px;
+}
+
+.order-panel .form-label {
+    color: #495057;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.order-panel .form-control,
+.order-panel .form-select {
+    min-height: 44px;
+}
+
+.order-panel .form-control::placeholder {
+    color: #adb5bd;
+}
+
+.order-form__actions {
+    border-top: 1px solid #e9ecef;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 4px;
+    padding-top: 16px;
 }
 
 .empty-state {
@@ -152,6 +202,22 @@ body {
 @media (max-width: 768px) {
     .page-header {
         padding-top: 72px;
+    }
+
+    .order-page-header h1 {
+        font-size: 26px;
+    }
+
+    .order-panel {
+        padding: 16px;
+    }
+
+    .order-form__actions {
+        flex-direction: column-reverse;
+    }
+
+    .order-form__actions .btn {
+        width: 100%;
     }
 
     .status-form {
