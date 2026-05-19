@@ -29,6 +29,36 @@ const STATUS_CLASS = {
     [ORDER_STATUS.CANCELLED]: 'dark',
 };
 
+const PAYMENT_STATUS = Object.freeze({
+    NOT_PLANNED: 'not_planned',
+    PLANNED: 'planned',
+    INVOICE_RECEIVED: 'invoice_received',
+    PAID: 'paid',
+    CLOSED: 'closed',
+});
+const ALL_PAYMENT_STATUSES = Object.values(PAYMENT_STATUS);
+const PAYMENT_STATUS_META = {
+    [PAYMENT_STATUS.NOT_PLANNED]: { label: 'Не запланирована', className: 'secondary' },
+    [PAYMENT_STATUS.PLANNED]: { label: 'Запланирована', className: 'primary' },
+    [PAYMENT_STATUS.INVOICE_RECEIVED]: { label: 'Счёт получен', className: 'warning' },
+    [PAYMENT_STATUS.PAID]: { label: 'Оплачено', className: 'success' },
+    [PAYMENT_STATUS.CLOSED]: { label: 'Закрыто', className: 'dark' },
+};
+
+const DOCUMENT_STATUS = Object.freeze({
+    NONE: 'none',
+    INVOICE: 'invoice',
+    CLOSING_DOCS: 'closing_docs',
+    COMPLETE: 'complete',
+});
+const ALL_DOCUMENT_STATUSES = Object.values(DOCUMENT_STATUS);
+const DOCUMENT_STATUS_META = {
+    [DOCUMENT_STATUS.NONE]: { label: 'Нет документов', className: 'secondary' },
+    [DOCUMENT_STATUS.INVOICE]: { label: 'Есть счёт', className: 'warning' },
+    [DOCUMENT_STATUS.CLOSING_DOCS]: { label: 'Закрывающие', className: 'info' },
+    [DOCUMENT_STATUS.COMPLETE]: { label: 'Полный комплект', className: 'success' },
+};
+
 const OWNER_LABEL_SQL = `COALESCE(
     NULLIF(sso_users.name, ''),
     NULLIF(sso_users.nickname, ''),
@@ -46,6 +76,22 @@ const ORDER_OWNER_SELECT = `orders.*,
     ${OWNER_REF_SQL} AS owner_ref`;
 const ORDER_OWNER_JOINS = `LEFT JOIN sso.users AS sso_users ON sso_users.id = orders.sso_author_id
     LEFT JOIN users AS legacy_users ON legacy_users.id = orders.author_id`;
+const ACCOUNTING_JOIN = `LEFT JOIN order_accounting AS accounting ON accounting.order_id = orders.id`;
+const ORDER_ANALYTICS_SELECT = `${ORDER_OWNER_SELECT},
+    accounting.order_id AS accounting_order_id,
+    accounting.budget_category,
+    accounting.cost_center,
+    accounting.supplier_name,
+    accounting.invoice_number,
+    accounting.invoice_date,
+    accounting.payment_status,
+    accounting.payment_date,
+    accounting.fiscal_period,
+    accounting.planned_amount,
+    accounting.actual_amount,
+    accounting.vat_amount,
+    accounting.document_status,
+    accounting.comment AS accounting_comment`;
 
 function getSsoUserId(req) {
     const id = Number(req.session?.user?.sso_id || req.session?.user?.id);
@@ -99,6 +145,30 @@ function selectOptions(options, selected) {
         ...option,
         selected: option.value === selected,
     }));
+}
+
+function paymentStatusOptions(selected) {
+    return ALL_PAYMENT_STATUSES.map((status) => ({
+        value: status,
+        label: PAYMENT_STATUS_META[status].label,
+        selected: status === selected,
+    }));
+}
+
+function documentStatusOptions(selected) {
+    return ALL_DOCUMENT_STATUSES.map((status) => ({
+        value: status,
+        label: DOCUMENT_STATUS_META[status].label,
+        selected: status === selected,
+    }));
+}
+
+function normalizePaymentStatus(value) {
+    return ALL_PAYMENT_STATUSES.includes(value) ? value : '';
+}
+
+function normalizeDocumentStatus(value) {
+    return ALL_DOCUMENT_STATUSES.includes(value) ? value : '';
 }
 
 function scopeOptions(selected) {
@@ -269,6 +339,13 @@ function normalizeDate(value) {
     return text;
 }
 
+function normalizeMonth(value) {
+    const text = normalizeText(value);
+    if (!/^\d{4}-\d{2}$/.test(text)) return '';
+    const month = Number(text.slice(5, 7));
+    return month >= 1 && month <= 12 ? text : '';
+}
+
 function normalizeNumberFilter(value) {
     const normalized = normalizePrice(value);
     if (normalized === null) return '';
@@ -276,9 +353,39 @@ function normalizeNumberFilter(value) {
     return Number.isFinite(number) && number >= 0 ? String(number) : '';
 }
 
+function normalizeOptionalMoney(value) {
+    const normalized = normalizePrice(value);
+    if (normalized === null) return null;
+    const number = Number(normalized);
+    if (!Number.isFinite(number) || number < 0 || number > 100000000) {
+        return undefined;
+    }
+    return number.toFixed(2);
+}
+
+function normalizeLimitedText(value, maxLength = 255) {
+    const text = normalizeText(value);
+    return text.length > maxLength ? text.slice(0, maxLength) : text;
+}
+
+function dateInputValue(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function fiscalPeriodFromDate(value) {
+    const date = normalizeDate(value);
+    return date ? date.slice(0, 7) : '';
+}
+
 function normalizeAnalyticsScope(value) {
     const scope = normalizeText(value);
-    return ['budget', 'active', 'received', 'closed', 'all'].includes(scope) ? scope : 'budget';
+    return ['budget', 'active', 'fact', 'payments', 'documents', 'variance', 'all'].includes(scope) ? scope : 'budget';
 }
 
 function normalizeOwnerType(value) {
@@ -286,15 +393,17 @@ function normalizeOwnerType(value) {
 }
 
 function normalizeDateField(value) {
-    return value === 'arrival_date' ? 'arrival_date' : 'creation_date';
+    return ['creation_date', 'arrival_date', 'invoice_date', 'payment_date'].includes(value) ? value : 'creation_date';
 }
 
 function analyticsScopeOptions(selected) {
     return selectOptions([
-        { value: 'budget', label: 'Бюджет: все кроме отменённых' },
+        { value: 'budget', label: 'Бюджет: план' },
         { value: 'active', label: 'В работе' },
-        { value: 'received', label: 'Факт: получено' },
-        { value: 'closed', label: 'Закрытые' },
+        { value: 'fact', label: 'Факт: оплачено' },
+        { value: 'payments', label: 'Оплаты' },
+        { value: 'documents', label: 'Документы' },
+        { value: 'variance', label: 'Отклонения' },
         { value: 'all', label: 'Все заказы' },
     ], selected);
 }
@@ -311,6 +420,8 @@ function dateFieldOptions(selected) {
     return selectOptions([
         { value: 'creation_date', label: 'Дата заказа' },
         { value: 'arrival_date', label: 'Желаемая доставка' },
+        { value: 'invoice_date', label: 'Дата счёта' },
+        { value: 'payment_date', label: 'Дата оплаты' },
     ], selected);
 }
 
@@ -322,6 +433,13 @@ function normalizeAnalyticsFilters(query) {
         date_field: normalizeDateField(query.date_field),
         date_from: normalizeDate(query.date_from),
         date_to: normalizeDate(query.date_to),
+        fiscal_from: normalizeMonth(query.fiscal_from),
+        fiscal_to: normalizeMonth(query.fiscal_to),
+        payment_status: normalizePaymentStatus(query.payment_status),
+        document_status: normalizeDocumentStatus(query.document_status),
+        budget_category: normalizeLimitedText(query.budget_category, 120),
+        cost_center: normalizeLimitedText(query.cost_center, 120),
+        supplier_name: normalizeLimitedText(query.supplier_name, 160),
         owner_type: normalizeOwnerType(query.owner_type),
         price_from: normalizeNumberFilter(query.price_from),
         price_to: normalizeNumberFilter(query.price_to),
@@ -332,6 +450,11 @@ function normalizeAnalyticsFilters(query) {
         filters.price_from = filters.price_to;
         filters.price_to = tmp;
     }
+    if (filters.fiscal_from && filters.fiscal_to && filters.fiscal_from > filters.fiscal_to) {
+        const tmp = filters.fiscal_from;
+        filters.fiscal_from = filters.fiscal_to;
+        filters.fiscal_to = tmp;
+    }
 
     return filters;
 }
@@ -339,7 +462,14 @@ function normalizeAnalyticsFilters(query) {
 function buildAnalyticsFilter(filters) {
     const where = [];
     const params = [];
-    const dateColumn = filters.date_field === 'arrival_date' ? 'orders.arrival_date' : 'orders.creation_date';
+    const dateColumnMap = {
+        creation_date: 'orders.creation_date',
+        arrival_date: 'orders.arrival_date',
+        invoice_date: 'accounting.invoice_date',
+        payment_date: 'accounting.payment_date',
+    };
+    const dateColumn = dateColumnMap[filters.date_field] || 'orders.creation_date';
+    const amountColumn = 'COALESCE(accounting.actual_amount, accounting.planned_amount, orders.price, 0)';
 
     if (filters.status) {
         where.push('orders.status = ?');
@@ -350,12 +480,17 @@ function buildAnalyticsFilter(filters) {
     } else if (filters.scope === 'active') {
         where.push('orders.status NOT IN (?, ?)');
         params.push(...CLOSED_STATUSES);
-    } else if (filters.scope === 'received') {
-        where.push('orders.status = ?');
-        params.push(ORDER_STATUS.RECEIVED);
-    } else if (filters.scope === 'closed') {
-        where.push('orders.status IN (?, ?)');
-        params.push(...CLOSED_STATUSES);
+    } else if (filters.scope === 'fact') {
+        where.push('accounting.payment_status = ?');
+        params.push(PAYMENT_STATUS.PAID);
+    } else if (filters.scope === 'payments') {
+        where.push('accounting.payment_status IN (?, ?)');
+        params.push(PAYMENT_STATUS.PLANNED, PAYMENT_STATUS.INVOICE_RECEIVED);
+    } else if (filters.scope === 'documents') {
+        where.push('(accounting.order_id IS NULL OR accounting.document_status IS NULL OR accounting.document_status != ?)');
+        params.push(DOCUMENT_STATUS.COMPLETE);
+    } else if (filters.scope === 'variance') {
+        where.push('ABS(COALESCE(accounting.planned_amount, orders.price, 0) - COALESCE(accounting.actual_amount, 0)) >= 0.01');
     }
 
     if (filters.date_from) {
@@ -366,27 +501,58 @@ function buildAnalyticsFilter(filters) {
         where.push(`DATE(${dateColumn}) <= ?`);
         params.push(filters.date_to);
     }
+    if (filters.fiscal_from) {
+        where.push('accounting.fiscal_period >= ?');
+        params.push(filters.fiscal_from);
+    }
+    if (filters.fiscal_to) {
+        where.push('accounting.fiscal_period <= ?');
+        params.push(filters.fiscal_to);
+    }
+    if (filters.payment_status) {
+        where.push('accounting.payment_status = ?');
+        params.push(filters.payment_status);
+    }
+    if (filters.document_status) {
+        where.push('accounting.document_status = ?');
+        params.push(filters.document_status);
+    }
+    if (filters.budget_category) {
+        where.push('accounting.budget_category LIKE ?');
+        params.push(`%${filters.budget_category}%`);
+    }
+    if (filters.cost_center) {
+        where.push('accounting.cost_center LIKE ?');
+        params.push(`%${filters.cost_center}%`);
+    }
+    if (filters.supplier_name) {
+        where.push('accounting.supplier_name LIKE ?');
+        params.push(`%${filters.supplier_name}%`);
+    }
     if (filters.owner_type === 'sso') {
         where.push('orders.sso_author_id IS NOT NULL');
     } else if (filters.owner_type === 'legacy') {
         where.push('orders.author_id IS NOT NULL');
     }
     if (filters.price_from) {
-        where.push('orders.price >= ?');
+        where.push(`${amountColumn} >= ?`);
         params.push(filters.price_from);
     }
     if (filters.price_to) {
-        where.push('orders.price <= ?');
+        where.push(`${amountColumn} <= ?`);
         params.push(filters.price_to);
     }
     if (filters.q) {
         const like = `%${filters.q}%`;
-        where.push(`(orders.good LIKE ? OR orders.link LIKE ? OR ${OWNER_LABEL_SQL} LIKE ?)`);
-        params.push(like, like, like);
+        where.push(`(orders.good LIKE ? OR orders.link LIKE ? OR ${OWNER_LABEL_SQL} LIKE ?
+            OR accounting.supplier_name LIKE ? OR accounting.invoice_number LIKE ?
+            OR accounting.budget_category LIKE ? OR accounting.cost_center LIKE ?)`);
+        params.push(like, like, like, like, like, like, like);
     }
 
     return {
         dateColumn,
+        amountColumn,
         whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '',
         params,
     };
@@ -408,6 +574,93 @@ function attachAnalyticsAmountUi(row, totalAmount = 0) {
     };
 }
 
+function attachAccountingGroupUi(row, totalAmount = 0) {
+    const planned = Number(row.planned_amount || 0);
+    const actual = Number(row.actual_amount || 0);
+    const variance = planned - actual;
+    return {
+        ...row,
+        planned_amount_label: formatMoney(planned),
+        actual_amount_label: formatMoney(actual),
+        variance_amount_label: formatMoney(variance),
+        share_label: totalAmount > 0 ? formatPercent((planned / totalAmount) * 100) : '0,0',
+    };
+}
+
+function accountingAttentionReasons(row) {
+    const reasons = [];
+    if (!row.accounting_order_id) {
+        reasons.push('учёт не заполнен');
+    }
+    if (!normalizeText(row.budget_category)) {
+        reasons.push('нет статьи бюджета');
+    }
+    if (!normalizeText(row.supplier_name)) {
+        reasons.push('нет поставщика');
+    }
+    if ([PAYMENT_STATUS.INVOICE_RECEIVED, PAYMENT_STATUS.PAID, PAYMENT_STATUS.CLOSED].includes(row.payment_status) && !normalizeText(row.invoice_number)) {
+        reasons.push('нет номера счёта');
+    }
+    if ([PAYMENT_STATUS.PLANNED, PAYMENT_STATUS.INVOICE_RECEIVED].includes(row.payment_status) && row.payment_date) {
+        const paymentDate = new Date(row.payment_date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (!Number.isNaN(paymentDate.getTime()) && paymentDate < today) {
+            reasons.push('оплата просрочена');
+        }
+    }
+    if ((row.document_status || DOCUMENT_STATUS.NONE) !== DOCUMENT_STATUS.COMPLETE) {
+        reasons.push('документы не закрыты');
+    }
+    return reasons;
+}
+
+function attachAccountingOrderUi(row) {
+    const paymentStatus = row.payment_status || PAYMENT_STATUS.NOT_PLANNED;
+    const documentStatus = row.document_status || DOCUMENT_STATUS.NONE;
+    const plannedAmount = row.planned_amount ?? row.price ?? '';
+    const actualAmount = row.actual_amount ?? '';
+    const plannedNumber = Number(plannedAmount || 0);
+    const actualNumber = Number(actualAmount || 0);
+    const variance = plannedNumber - actualNumber;
+    const attentionReasons = accountingAttentionReasons({ ...row, payment_status: paymentStatus, document_status: documentStatus });
+
+    return {
+        ...attachOrderUi(row),
+        accounting_missing: !row.accounting_order_id,
+        budget_category_label: normalizeText(row.budget_category) || 'Без статьи',
+        cost_center_label: normalizeText(row.cost_center) || 'Без центра',
+        supplier_label: normalizeText(row.supplier_name) || 'Не указан',
+        invoice_label: normalizeText(row.invoice_number) || 'Не указан',
+        invoice_date_value: dateInputValue(row.invoice_date),
+        payment_date_value: dateInputValue(row.payment_date),
+        fiscal_period_value: row.fiscal_period || fiscalPeriodFromDate(dateInputValue(row.arrival_date)) || fiscalPeriodFromDate(dateInputValue(row.creation_date)),
+        planned_amount_value: plannedAmount,
+        actual_amount_value: actualAmount,
+        vat_amount_value: row.vat_amount ?? '',
+        planned_amount_label: formatMoney(plannedNumber),
+        actual_amount_label: row.actual_amount === null || row.actual_amount === undefined ? '0,00' : formatMoney(actualNumber),
+        vat_amount_label: row.vat_amount === null || row.vat_amount === undefined ? '0,00' : formatMoney(row.vat_amount),
+        variance_amount_label: formatMoney(variance),
+        payment_status: paymentStatus,
+        payment_status_label: PAYMENT_STATUS_META[paymentStatus]?.label || paymentStatus,
+        payment_status_class: PAYMENT_STATUS_META[paymentStatus]?.className || 'secondary',
+        payment_status_options: paymentStatusOptions(paymentStatus),
+        document_status: documentStatus,
+        document_status_label: DOCUMENT_STATUS_META[documentStatus]?.label || documentStatus,
+        document_status_class: DOCUMENT_STATUS_META[documentStatus]?.className || 'secondary',
+        document_status_options: documentStatusOptions(documentStatus),
+        accounting_comment: row.accounting_comment || '',
+        attention_reasons: attentionReasons,
+        has_attention: attentionReasons.length > 0,
+        modal_id: `accounting-${row.id}`,
+    };
+}
+
+function appendWhere(whereSql, condition) {
+    return whereSql ? `${whereSql} AND ${condition}` : `WHERE ${condition}`;
+}
+
 function analyticsFilterQuery(filters) {
     return {
         q: filters.q,
@@ -416,6 +669,13 @@ function analyticsFilterQuery(filters) {
         date_field: filters.date_field,
         date_from: filters.date_from,
         date_to: filters.date_to,
+        fiscal_from: filters.fiscal_from,
+        fiscal_to: filters.fiscal_to,
+        payment_status: filters.payment_status,
+        document_status: filters.document_status,
+        budget_category: filters.budget_category,
+        cost_center: filters.cost_center,
+        supplier_name: filters.supplier_name,
         owner_type: filters.owner_type,
         price_from: filters.price_from,
         price_to: filters.price_to,
@@ -861,37 +1121,50 @@ export const orderAnalytics = async (req, res) => {
         const filters = normalizeAnalyticsFilters(req.query);
         const query = analyticsFilterQuery(filters);
         const filter = buildAnalyticsFilter(filters);
-        const totalQueryParams = filter.params;
 
         const [summaryRows] = await connection.query(
             `SELECT
                 COUNT(*) AS total_orders,
-                COALESCE(SUM(orders.price), 0) AS total_amount,
-                COALESCE(SUM(CASE WHEN orders.status != ? THEN orders.price ELSE 0 END), 0) AS budget_amount,
-                COALESCE(SUM(CASE WHEN orders.status NOT IN (?, ?) THEN orders.price ELSE 0 END), 0) AS active_amount,
-                COALESCE(SUM(CASE WHEN orders.status = ? THEN orders.price ELSE 0 END), 0) AS fact_amount,
-                COALESCE(SUM(CASE WHEN orders.status = ? THEN orders.price ELSE 0 END), 0) AS pending_amount,
-                COALESCE(SUM(CASE WHEN orders.status = ? THEN orders.price ELSE 0 END), 0) AS cancelled_amount,
-                COALESCE(AVG(orders.price), 0) AS avg_amount
+                COALESCE(SUM(COALESCE(accounting.planned_amount, orders.price, 0)), 0) AS planned_total,
+                COALESCE(SUM(CASE WHEN orders.status != ? THEN COALESCE(accounting.planned_amount, orders.price, 0) ELSE 0 END), 0) AS budget_amount,
+                COALESCE(SUM(CASE WHEN orders.status NOT IN (?, ?) THEN COALESCE(accounting.planned_amount, orders.price, 0) ELSE 0 END), 0) AS active_amount,
+                COALESCE(SUM(CASE WHEN accounting.payment_status = ? THEN COALESCE(accounting.planned_amount, orders.price, 0) ELSE 0 END), 0) AS invoice_amount,
+                COALESCE(SUM(CASE WHEN accounting.payment_status = ? THEN COALESCE(accounting.actual_amount, accounting.planned_amount, orders.price, 0) ELSE 0 END), 0) AS fact_amount,
+                COALESCE(SUM(CASE WHEN accounting.payment_status IN (?, ?) AND accounting.payment_date < CURDATE() THEN COALESCE(accounting.planned_amount, orders.price, 0) ELSE 0 END), 0) AS overdue_amount,
+                COALESCE(SUM(CASE WHEN orders.status = ? THEN COALESCE(accounting.planned_amount, orders.price, 0) ELSE 0 END), 0) AS pending_amount,
+                COALESCE(SUM(CASE WHEN orders.status = ? THEN COALESCE(accounting.planned_amount, orders.price, 0) ELSE 0 END), 0) AS cancelled_amount,
+                COALESCE(SUM(CASE WHEN accounting.document_status IS NULL OR accounting.document_status != ? THEN 1 ELSE 0 END), 0) AS docs_missing_count,
+                COALESCE(SUM(CASE WHEN accounting.order_id IS NULL THEN 1 ELSE 0 END), 0) AS accounting_missing_count,
+                COALESCE(AVG(COALESCE(accounting.actual_amount, accounting.planned_amount, orders.price, 0)), 0) AS avg_amount,
+                COALESCE(SUM(COALESCE(accounting.planned_amount, orders.price, 0) - COALESCE(accounting.actual_amount, 0)), 0) AS variance_amount
              FROM orders
              ${ORDER_OWNER_JOINS}
+             ${ACCOUNTING_JOIN}
              ${filter.whereSql}`,
             [
                 ORDER_STATUS.CANCELLED,
                 ...CLOSED_STATUSES,
-                ORDER_STATUS.RECEIVED,
+                PAYMENT_STATUS.INVOICE_RECEIVED,
+                PAYMENT_STATUS.PAID,
+                PAYMENT_STATUS.PLANNED,
+                PAYMENT_STATUS.INVOICE_RECEIVED,
                 ORDER_STATUS.PENDING,
                 ORDER_STATUS.CANCELLED,
-                ...totalQueryParams,
+                DOCUMENT_STATUS.COMPLETE,
+                ...filter.params,
             ]
         );
         const summaryRow = summaryRows[0] || {};
-        const totalAmount = Number(summaryRow.total_amount || 0);
+        const totalAmount = Number(summaryRow.planned_total || 0);
 
         const [statusRowsRaw] = await connection.query(
-            `SELECT orders.status, COUNT(*) AS orders_count, COALESCE(SUM(orders.price), 0) AS amount, COALESCE(AVG(orders.price), 0) AS avg_amount
+            `SELECT orders.status,
+                COUNT(*) AS orders_count,
+                COALESCE(SUM(COALESCE(accounting.planned_amount, orders.price, 0)), 0) AS amount,
+                COALESCE(AVG(COALESCE(accounting.actual_amount, accounting.planned_amount, orders.price, 0)), 0) AS avg_amount
              FROM orders
              ${ORDER_OWNER_JOINS}
+             ${ACCOUNTING_JOIN}
              ${filter.whereSql}
              GROUP BY orders.status`,
             filter.params
@@ -901,98 +1174,171 @@ export const orderAnalytics = async (req, res) => {
             .map((row) => attachAnalyticsAmountUi(row, totalAmount));
 
         const [monthRowsRaw] = await connection.query(
-            `SELECT COALESCE(DATE_FORMAT(${filter.dateColumn}, '%Y-%m'), 'Без даты') AS period,
+            `SELECT COALESCE(accounting.fiscal_period, DATE_FORMAT(orders.arrival_date, '%Y-%m'), DATE_FORMAT(orders.creation_date, '%Y-%m'), 'Без периода') AS period,
                 COUNT(*) AS orders_count,
-                COALESCE(SUM(orders.price), 0) AS amount,
-                COALESCE(AVG(orders.price), 0) AS avg_amount
+                COALESCE(SUM(COALESCE(accounting.planned_amount, orders.price, 0)), 0) AS planned_amount,
+                COALESCE(SUM(CASE WHEN accounting.payment_status = ? THEN COALESCE(accounting.actual_amount, accounting.planned_amount, orders.price, 0) ELSE 0 END), 0) AS actual_amount,
+                COALESCE(SUM(COALESCE(accounting.planned_amount, orders.price, 0) - COALESCE(accounting.actual_amount, 0)), 0) AS variance_amount
              FROM orders
              ${ORDER_OWNER_JOINS}
+             ${ACCOUNTING_JOIN}
              ${filter.whereSql}
              GROUP BY period
              ORDER BY period DESC
              LIMIT 24`,
-            filter.params
+            [PAYMENT_STATUS.PAID, ...filter.params]
         );
-        const monthRows = monthRowsRaw.map((row) => attachAnalyticsAmountUi(row, totalAmount));
+        const monthRows = monthRowsRaw.map((row) => attachAccountingGroupUi(row, totalAmount));
 
-        const [ownerRowsRaw] = await connection.query(
-            `SELECT ${OWNER_TYPE_SQL} AS owner_type,
-                ${OWNER_REF_SQL} AS owner_ref,
-                ${OWNER_LABEL_SQL} AS owner_label,
+        const [categoryRowsRaw] = await connection.query(
+            `SELECT COALESCE(NULLIF(accounting.budget_category, ''), 'Без статьи') AS label,
                 COUNT(*) AS orders_count,
-                COALESCE(SUM(orders.price), 0) AS amount,
-                COALESCE(SUM(CASE WHEN orders.status NOT IN (?, ?) THEN orders.price ELSE 0 END), 0) AS active_amount,
-                COALESCE(SUM(CASE WHEN orders.status = ? THEN orders.price ELSE 0 END), 0) AS fact_amount,
-                COALESCE(AVG(orders.price), 0) AS avg_amount
+                COALESCE(SUM(COALESCE(accounting.planned_amount, orders.price, 0)), 0) AS planned_amount,
+                COALESCE(SUM(CASE WHEN accounting.payment_status = ? THEN COALESCE(accounting.actual_amount, accounting.planned_amount, orders.price, 0) ELSE 0 END), 0) AS actual_amount,
+                COALESCE(SUM(COALESCE(accounting.planned_amount, orders.price, 0) - COALESCE(accounting.actual_amount, 0)), 0) AS variance_amount
              FROM orders
              ${ORDER_OWNER_JOINS}
+             ${ACCOUNTING_JOIN}
              ${filter.whereSql}
-             GROUP BY owner_type, owner_ref, owner_label
-             ORDER BY amount DESC
-             LIMIT 15`,
-            [...CLOSED_STATUSES, ORDER_STATUS.RECEIVED, ...filter.params]
+             GROUP BY label
+             ORDER BY planned_amount DESC
+             LIMIT 20`,
+            [PAYMENT_STATUS.PAID, ...filter.params]
         );
-        const ownerRows = ownerRowsRaw.map((row) => ({
-            ...attachAnalyticsAmountUi(row, totalAmount),
-            source_label: row.owner_type === 'sso' ? 'SSO' : 'legacy',
-            owner_link: `/dashboard/vieworder/${row.owner_type}/${row.owner_ref}?scope=all`,
-            active_amount_label: formatMoney(row.active_amount),
-            fact_amount_label: formatMoney(row.fact_amount),
-        }));
+        const categoryRows = categoryRowsRaw.map((row) => attachAccountingGroupUi(row, totalAmount));
 
-        const [productRowsRaw] = await connection.query(
-            `SELECT orders.good,
+        const [supplierRowsRaw] = await connection.query(
+            `SELECT COALESCE(NULLIF(accounting.supplier_name, ''), 'Поставщик не указан') AS label,
                 COUNT(*) AS orders_count,
-                COALESCE(SUM(orders.quantity), 0) AS quantity_count,
-                COALESCE(SUM(orders.price), 0) AS amount,
-                COALESCE(AVG(orders.price), 0) AS avg_amount
+                COALESCE(SUM(COALESCE(accounting.planned_amount, orders.price, 0)), 0) AS planned_amount,
+                COALESCE(SUM(CASE WHEN accounting.payment_status = ? THEN COALESCE(accounting.actual_amount, accounting.planned_amount, orders.price, 0) ELSE 0 END), 0) AS actual_amount,
+                COALESCE(SUM(COALESCE(accounting.planned_amount, orders.price, 0) - COALESCE(accounting.actual_amount, 0)), 0) AS variance_amount
              FROM orders
              ${ORDER_OWNER_JOINS}
+             ${ACCOUNTING_JOIN}
              ${filter.whereSql}
-             GROUP BY orders.good
-             ORDER BY amount DESC
-             LIMIT 15`,
-            filter.params
+             GROUP BY label
+             ORDER BY planned_amount DESC
+             LIMIT 20`,
+            [PAYMENT_STATUS.PAID, ...filter.params]
         );
-        const productRows = productRowsRaw.map((row) => attachAnalyticsAmountUi(row, totalAmount));
+        const supplierRows = supplierRowsRaw.map((row) => attachAccountingGroupUi(row, totalAmount));
 
-        const [recentRows] = await connection.query(
-            `SELECT ${ORDER_OWNER_SELECT}
+        const [costCenterRowsRaw] = await connection.query(
+            `SELECT COALESCE(NULLIF(accounting.cost_center, ''), 'Центр не указан') AS label,
+                COUNT(*) AS orders_count,
+                COALESCE(SUM(COALESCE(accounting.planned_amount, orders.price, 0)), 0) AS planned_amount,
+                COALESCE(SUM(CASE WHEN accounting.payment_status = ? THEN COALESCE(accounting.actual_amount, accounting.planned_amount, orders.price, 0) ELSE 0 END), 0) AS actual_amount,
+                COALESCE(SUM(COALESCE(accounting.planned_amount, orders.price, 0) - COALESCE(accounting.actual_amount, 0)), 0) AS variance_amount
              FROM orders
              ${ORDER_OWNER_JOINS}
+             ${ACCOUNTING_JOIN}
              ${filter.whereSql}
-             ORDER BY ${filter.dateColumn} DESC, orders.id DESC
+             GROUP BY label
+             ORDER BY planned_amount DESC
+             LIMIT 20`,
+            [PAYMENT_STATUS.PAID, ...filter.params]
+        );
+        const costCenterRows = costCenterRowsRaw.map((row) => attachAccountingGroupUi(row, totalAmount));
+
+        const paymentWhereSql = appendWhere(filter.whereSql, 'accounting.payment_status IN (?, ?)');
+        const [paymentRows] = await connection.query(
+            `SELECT ${ORDER_ANALYTICS_SELECT}
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${ACCOUNTING_JOIN}
+             ${paymentWhereSql}
+             ORDER BY accounting.payment_date IS NULL ASC, accounting.payment_date ASC, orders.id DESC
+             LIMIT 30`,
+            [...filter.params, PAYMENT_STATUS.PLANNED, PAYMENT_STATUS.INVOICE_RECEIVED]
+        );
+
+        const attentionWhereSql = appendWhere(
+            filter.whereSql,
+            `(accounting.order_id IS NULL
+                OR NULLIF(accounting.budget_category, '') IS NULL
+                OR NULLIF(accounting.supplier_name, '') IS NULL
+                OR (accounting.payment_status IN (?, ?) AND accounting.payment_date < CURDATE())
+                OR (accounting.payment_status IN (?, ?, ?) AND NULLIF(accounting.invoice_number, '') IS NULL)
+                OR accounting.document_status IS NULL
+                OR accounting.document_status != ?)`
+        );
+        const [attentionRows] = await connection.query(
+            `SELECT ${ORDER_ANALYTICS_SELECT}
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${ACCOUNTING_JOIN}
+             ${attentionWhereSql}
+             ORDER BY orders.id DESC
+             LIMIT 50`,
+            [
+                ...filter.params,
+                PAYMENT_STATUS.PLANNED,
+                PAYMENT_STATUS.INVOICE_RECEIVED,
+                PAYMENT_STATUS.INVOICE_RECEIVED,
+                PAYMENT_STATUS.PAID,
+                PAYMENT_STATUS.CLOSED,
+                DOCUMENT_STATUS.COMPLETE,
+            ]
+        );
+
+        const [detailRows] = await connection.query(
+            `SELECT ${ORDER_ANALYTICS_SELECT}
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${ACCOUNTING_JOIN}
+             ${filter.whereSql}
+             ORDER BY ${filter.dateColumn} IS NULL ASC, ${filter.dateColumn} DESC, orders.id DESC
              LIMIT 50`,
             filter.params
         );
+        const paymentOrders = paymentRows.map(attachAccountingOrderUi);
+        const attentionOrders = attentionRows.map(attachAccountingOrderUi);
+        const detailOrders = detailRows.map(attachAccountingOrderUi);
+        const accountingFormMap = new Map();
+        [...attentionOrders, ...paymentOrders, ...detailOrders].forEach((row) => {
+            accountingFormMap.set(row.id, row);
+        });
 
         const summary = {
             total_orders: Number(summaryRow.total_orders || 0),
-            total_amount_label: formatMoney(summaryRow.total_amount),
+            total_amount_label: formatMoney(summaryRow.planned_total),
             budget_amount_label: formatMoney(summaryRow.budget_amount),
             active_amount_label: formatMoney(summaryRow.active_amount),
+            invoice_amount_label: formatMoney(summaryRow.invoice_amount),
             fact_amount_label: formatMoney(summaryRow.fact_amount),
+            overdue_amount_label: formatMoney(summaryRow.overdue_amount),
             pending_amount_label: formatMoney(summaryRow.pending_amount),
             cancelled_amount_label: formatMoney(summaryRow.cancelled_amount),
+            variance_amount_label: formatMoney(summaryRow.variance_amount),
+            docs_missing_count: Number(summaryRow.docs_missing_count || 0),
+            accounting_missing_count: Number(summaryRow.accounting_missing_count || 0),
             avg_amount_label: formatMoney(summaryRow.avg_amount),
         };
 
         res.render('analytics', {
-            title: 'Аналитика заказов',
+            title: 'Аналитика и учёт',
             filters,
-            hasFilters: Boolean(filters.q || filters.status || filters.date_from || filters.date_to || filters.owner_type || filters.price_from || filters.price_to || filters.scope !== 'budget' || filters.date_field !== 'creation_date'),
+            hasFilters: Boolean(filters.q || filters.status || filters.date_from || filters.date_to || filters.fiscal_from || filters.fiscal_to || filters.payment_status || filters.document_status || filters.budget_category || filters.cost_center || filters.supplier_name || filters.owner_type || filters.price_from || filters.price_to || filters.scope !== 'budget' || filters.date_field !== 'creation_date'),
             summary,
             statusRows,
             monthRows,
-            ownerRows,
-            productRows,
-            recentOrders: recentRows.map(attachOrderUi),
+            categoryRows,
+            supplierRows,
+            costCenterRows,
+            paymentRows: paymentOrders,
+            attentionRows: attentionOrders,
+            detailRows: detailOrders,
+            accountingForms: [...accountingFormMap.values()],
             hasRows: summary.total_orders > 0,
             scopeOptions: analyticsScopeOptions(filters.scope),
             statusOptions: statusOptions(filters.status),
+            paymentStatusOptions: [{ value: '', label: 'Все оплаты', selected: !filters.payment_status }, ...paymentStatusOptions(filters.payment_status)],
+            documentStatusOptions: [{ value: '', label: 'Все документы', selected: !filters.document_status }, ...documentStatusOptions(filters.document_status)],
             ownerTypeOptions: ownerTypeOptions(filters.owner_type),
             dateFieldOptions: dateFieldOptions(filters.date_field),
-            csvUrl: buildUrl('/analytics/export.csv', query, 1),
+            currentUrl: buildUrl('/analytics', query, 1),
+            alert: req.query.updated || req.query.error || null,
             isAuthenticated: req.session.isAuthenticated,
             user: req.session.user,
         });
@@ -1015,6 +1361,7 @@ export const orderAnalyticsCsv = async (req, res) => {
             `SELECT ${ORDER_OWNER_SELECT}
              FROM orders
              ${ORDER_OWNER_JOINS}
+             ${ACCOUNTING_JOIN}
              ${filter.whereSql}
              ORDER BY ${filter.dateColumn} DESC, orders.id DESC`,
             filter.params
@@ -1026,6 +1373,95 @@ export const orderAnalyticsCsv = async (req, res) => {
         console.log(err);
         mlog(err);
         renderError(res, req, 500, 'Ошибка сервера', 'Не удалось выгрузить аналитику заказов.');
+    } finally {
+        if (connection) connection.release();
+    }
+};
+
+export const updateOrderAccounting = async (req, res) => {
+    let connection;
+    const orderId = normalizeId(req.params.id);
+    const redirectTo = localReturnTo(req.body.return_to, '/analytics');
+    const redirectWith = (key, text) => {
+        res.redirect(`${redirectTo}${redirectTo.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(text)}`);
+    };
+
+    if (!orderId) {
+        return redirectWith('error', 'Некорректный номер заказа.');
+    }
+
+    const paymentStatus = normalizePaymentStatus(req.body.payment_status) || PAYMENT_STATUS.NOT_PLANNED;
+    const documentStatus = normalizeDocumentStatus(req.body.document_status) || DOCUMENT_STATUS.NONE;
+    const plannedAmount = normalizeOptionalMoney(req.body.planned_amount);
+    const actualAmount = normalizeOptionalMoney(req.body.actual_amount);
+    const vatAmount = normalizeOptionalMoney(req.body.vat_amount);
+    const invoiceDate = normalizeDate(req.body.invoice_date) || null;
+    const paymentDate = normalizeDate(req.body.payment_date) || null;
+    const fiscalPeriod = normalizeMonth(req.body.fiscal_period) || null;
+
+    if ([plannedAmount, actualAmount, vatAmount].includes(undefined)) {
+        return redirectWith('error', 'Проверьте суммы: допускаются только положительные числа.');
+    }
+    if (req.body.invoice_date && !invoiceDate) {
+        return redirectWith('error', 'Некорректная дата счёта.');
+    }
+    if (req.body.payment_date && !paymentDate) {
+        return redirectWith('error', 'Некорректная дата оплаты.');
+    }
+    if (req.body.fiscal_period && !fiscalPeriod) {
+        return redirectWith('error', 'Некорректный финансовый месяц.');
+    }
+
+    try {
+        connection = await pool.getConnection();
+        const [orders] = await connection.query('SELECT id FROM orders WHERE id = ? LIMIT 1', [orderId]);
+        if (orders.length === 0) {
+            return redirectWith('error', 'Заказ не найден.');
+        }
+
+        await connection.query(
+            `INSERT INTO order_accounting
+                (order_id, budget_category, cost_center, supplier_name, invoice_number, invoice_date,
+                 payment_status, payment_date, fiscal_period, planned_amount, actual_amount, vat_amount,
+                 document_status, comment, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+                budget_category = VALUES(budget_category),
+                cost_center = VALUES(cost_center),
+                supplier_name = VALUES(supplier_name),
+                invoice_number = VALUES(invoice_number),
+                invoice_date = VALUES(invoice_date),
+                payment_status = VALUES(payment_status),
+                payment_date = VALUES(payment_date),
+                fiscal_period = VALUES(fiscal_period),
+                planned_amount = VALUES(planned_amount),
+                actual_amount = VALUES(actual_amount),
+                vat_amount = VALUES(vat_amount),
+                document_status = VALUES(document_status),
+                comment = VALUES(comment),
+                updated_at = NOW()`,
+            [
+                orderId,
+                normalizeLimitedText(req.body.budget_category, 120) || null,
+                normalizeLimitedText(req.body.cost_center, 120) || null,
+                normalizeLimitedText(req.body.supplier_name, 160) || null,
+                normalizeLimitedText(req.body.invoice_number, 120) || null,
+                invoiceDate,
+                paymentStatus,
+                paymentDate,
+                fiscalPeriod,
+                plannedAmount,
+                actualAmount,
+                vatAmount,
+                documentStatus,
+                normalizeLimitedText(req.body.comment, 1000) || null,
+            ]
+        );
+        redirectWith('updated', 'Учётные данные заказа сохранены.');
+    } catch (err) {
+        console.log(err);
+        mlog(err);
+        redirectWith('error', 'Не удалось сохранить учётные данные.');
     } finally {
         if (connection) connection.release();
     }
@@ -1068,15 +1504,30 @@ export const createOrder = async (req, res) => {
     const ssoAuthorId = getSsoUserId(req);
     try {
         connection = await pool.getConnection();
-        await connection.query(
+        await connection.beginTransaction();
+        const [result] = await connection.query(
             `INSERT INTO orders
              SET good = ?, quantity = ?, price = ?, link = ?, creation_date = NOW(),
                  arrival_date = ?, author_id = NULL, sso_author_id = ?, status = ?`,
             [good, quantity, price, link, arrival_date, ssoAuthorId, ORDER_STATUS.PENDING]
         );
+        await connection.query(
+            `INSERT INTO order_accounting
+                (order_id, payment_status, fiscal_period, planned_amount, document_status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
+            [result.insertId, PAYMENT_STATUS.NOT_PLANNED, fiscalPeriodFromDate(arrival_date), price, DOCUMENT_STATUS.NONE]
+        );
+        await connection.commit();
         mlog('Добавлен новый заказ.');
         res.redirect('/myorders?created=' + encodeURIComponent('Новый заказ добавлен.'));
     } catch (err) {
+        if (connection) {
+            try {
+                await connection.rollback();
+            } catch (rollbackErr) {
+                mlog(rollbackErr);
+            }
+        }
         console.log(err);
         mlog(err);
         renderError(res, req, 500, 'Ошибка сервера', 'Не удалось создать заказ.');
@@ -1130,6 +1581,22 @@ export const updateOrder = async (req, res) => {
         if (result.affectedRows === 0) {
             return res.redirect('/myorders?error=' + encodeURIComponent('Заказ уже нельзя редактировать.'));
         }
+        await connection.query(
+            `INSERT INTO order_accounting
+                (order_id, payment_status, fiscal_period, planned_amount, document_status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+                planned_amount = CASE
+                    WHEN payment_status = VALUES(payment_status) AND actual_amount IS NULL THEN VALUES(planned_amount)
+                    ELSE planned_amount
+                END,
+                fiscal_period = CASE
+                    WHEN payment_status = VALUES(payment_status) AND actual_amount IS NULL THEN VALUES(fiscal_period)
+                    ELSE fiscal_period
+                END,
+                updated_at = NOW()`,
+            [req.params.id, PAYMENT_STATUS.NOT_PLANNED, fiscalPeriodFromDate(arrival_date), price, DOCUMENT_STATUS.NONE]
+        );
         mlog('Заказ был отредактирован пользователем.');
         res.redirect('/myorders?updated=' + encodeURIComponent('Данные заказа обновлены.'));
     } catch (err) {

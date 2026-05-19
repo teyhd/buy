@@ -1,42 +1,41 @@
 <div class="page-header">
-  <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
-    <div>
-      <h1>Аналитика заказов</h1>
-      <div class="text-muted">Бюджет, факт расходов и выгрузка для учёта по текущей выборке.</div>
-    </div>
-    <a class="btn btn-outline-dark" href="{{csvUrl}}"><i class="bi bi-download"></i> Скачать CSV</a>
+  {{> notice}}
+  <div>
+    <h1>Аналитика и учёт</h1>
+    <div class="text-muted">Бюджет, факт, оплаты, документы и отклонения по закупкам.</div>
   </div>
 
   <form class="analytics-filter row g-2 align-items-end mt-3" method="GET" action="/analytics" novalidate>
     <div class="col-12 col-lg-4">
       <label class="form-label" for="analytics-q">Поиск</label>
-      <input class="form-control" id="analytics-q" type="search" name="q" value="{{filters.q}}" placeholder="Товар, заказчик или ссылка">
+      <input class="form-control" id="analytics-q" type="search" name="q" value="{{filters.q}}" placeholder="Товар, заказчик, ссылка, поставщик или счёт">
     </div>
     <div class="col-12 col-md-6 col-lg-3">
-      <label class="form-label" for="analytics-scope">Сценарий отчёта</label>
+      <label class="form-label" for="analytics-scope">Сценарий</label>
       <select class="form-select" id="analytics-scope" name="scope">
         {{#each scopeOptions}}
           <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
         {{/each}}
       </select>
     </div>
-    <div class="col-12 col-md-6 col-lg-3">
-      <label class="form-label" for="analytics-status">Статус</label>
+    <div class="col-12 col-md-6 col-lg-2">
+      <label class="form-label" for="analytics-status">Статус заказа</label>
       <select class="form-select" id="analytics-status" name="status">
-        <option value="">Все по сценарию</option>
+        <option value="">Все</option>
         {{#each statusOptions}}
           <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
         {{/each}}
       </select>
     </div>
-    <div class="col-12 col-md-6 col-lg-2">
-      <label class="form-label" for="analytics-date-field">Дата учёта</label>
+    <div class="col-12 col-md-6 col-lg-3">
+      <label class="form-label" for="analytics-date-field">Дата для периода</label>
       <select class="form-select" id="analytics-date-field" name="date_field">
         {{#each dateFieldOptions}}
           <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
         {{/each}}
       </select>
     </div>
+
     <div class="col-12 col-md-6 col-lg-2">
       <label class="form-label" for="analytics-date-from">С даты</label>
       <input class="form-control" id="analytics-date-from" type="date" name="date_from" value="{{filters.date_from}}">
@@ -46,13 +45,51 @@
       <input class="form-control" id="analytics-date-to" type="date" name="date_to" value="{{filters.date_to}}">
     </div>
     <div class="col-12 col-md-6 col-lg-2">
-      <label class="form-label" for="analytics-owner-type">Источник</label>
+      <label class="form-label" for="analytics-fiscal-from">Фин. месяц от</label>
+      <input class="form-control" id="analytics-fiscal-from" type="month" name="fiscal_from" value="{{filters.fiscal_from}}">
+    </div>
+    <div class="col-12 col-md-6 col-lg-2">
+      <label class="form-label" for="analytics-fiscal-to">Фин. месяц до</label>
+      <input class="form-control" id="analytics-fiscal-to" type="month" name="fiscal_to" value="{{filters.fiscal_to}}">
+    </div>
+    <div class="col-12 col-md-6 col-lg-2">
+      <label class="form-label" for="analytics-payment-status">Оплата</label>
+      <select class="form-select" id="analytics-payment-status" name="payment_status">
+        {{#each paymentStatusOptions}}
+          <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+        {{/each}}
+      </select>
+    </div>
+    <div class="col-12 col-md-6 col-lg-2">
+      <label class="form-label" for="analytics-document-status">Документы</label>
+      <select class="form-select" id="analytics-document-status" name="document_status">
+        {{#each documentStatusOptions}}
+          <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+        {{/each}}
+      </select>
+    </div>
+
+    <div class="col-12 col-md-6 col-lg-3">
+      <label class="form-label" for="analytics-budget-category">Статья бюджета</label>
+      <input class="form-control" id="analytics-budget-category" type="text" name="budget_category" value="{{filters.budget_category}}" placeholder="Например: IT, мебель">
+    </div>
+    <div class="col-12 col-md-6 col-lg-3">
+      <label class="form-label" for="analytics-cost-center">Центр затрат</label>
+      <input class="form-control" id="analytics-cost-center" type="text" name="cost_center" value="{{filters.cost_center}}" placeholder="Отдел, класс, проект">
+    </div>
+    <div class="col-12 col-md-6 col-lg-3">
+      <label class="form-label" for="analytics-supplier">Поставщик</label>
+      <input class="form-control" id="analytics-supplier" type="text" name="supplier_name" value="{{filters.supplier_name}}" placeholder="Название поставщика">
+    </div>
+    <div class="col-12 col-md-6 col-lg-3">
+      <label class="form-label" for="analytics-owner-type">Источник автора</label>
       <select class="form-select" id="analytics-owner-type" name="owner_type">
         {{#each ownerTypeOptions}}
           <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
         {{/each}}
       </select>
     </div>
+
     <div class="col-12 col-md-6 col-lg-2">
       <label class="form-label" for="analytics-price-from">Сумма от</label>
       <input class="form-control" id="analytics-price-from" type="number" min="0" step="0.01" name="price_from" value="{{filters.price_from}}">
@@ -70,50 +107,69 @@
 
 <div class="analytics-grid mb-4">
   <div class="analytics-card">
-    <div class="analytics-card__label">К планированию</div>
+    <div class="analytics-card__label">План бюджета</div>
     <div class="analytics-card__value">{{summary.budget_amount_label}} руб.</div>
     <div class="analytics-card__hint">Все выбранные заказы без отменённых</div>
   </div>
   <div class="analytics-card">
-    <div class="analytics-card__label">В работе</div>
+    <div class="analytics-card__label">Активные обязательства</div>
     <div class="analytics-card__value">{{summary.active_amount_label}} руб.</div>
-    <div class="analytics-card__hint">Заявки до закрытия</div>
+    <div class="analytics-card__hint">Заявки в работе до закрытия</div>
   </div>
   <div class="analytics-card">
-    <div class="analytics-card__label">Факт расходов</div>
+    <div class="analytics-card__label">Счета к оплате</div>
+    <div class="analytics-card__value">{{summary.invoice_amount_label}} руб.</div>
+    <div class="analytics-card__hint">Есть счёт, но не факт оплаты</div>
+  </div>
+  <div class="analytics-card">
+    <div class="analytics-card__label">Оплаченный факт</div>
     <div class="analytics-card__value">{{summary.fact_amount_label}} руб.</div>
-    <div class="analytics-card__hint">Статус “Получен”</div>
+    <div class="analytics-card__hint">Только строки со статусом оплаты “Оплачено”</div>
   </div>
   <div class="analytics-card">
-    <div class="analytics-card__label">На рассмотрении</div>
-    <div class="analytics-card__value">{{summary.pending_amount_label}} руб.</div>
-    <div class="analytics-card__hint">Потенциальная нагрузка</div>
+    <div class="analytics-card__label">Просрочено к оплате</div>
+    <div class="analytics-card__value">{{summary.overdue_amount_label}} руб.</div>
+    <div class="analytics-card__hint">Плановая дата оплаты уже прошла</div>
   </div>
   <div class="analytics-card">
-    <div class="analytics-card__label">Всего заявок</div>
-    <div class="analytics-card__value">{{summary.total_orders}}</div>
-    <div class="analytics-card__hint">Средняя сумма: {{summary.avg_amount_label}} руб.</div>
+    <div class="analytics-card__label">Документы не закрыты</div>
+    <div class="analytics-card__value">{{summary.docs_missing_count}}</div>
+    <div class="analytics-card__hint">Нет полного комплекта документов</div>
+  </div>
+  <div class="analytics-card">
+    <div class="analytics-card__label">Отклонение план/факт</div>
+    <div class="analytics-card__value">{{summary.variance_amount_label}} руб.</div>
+    <div class="analytics-card__hint">Плановая сумма минус оплаченный факт</div>
   </div>
   <div class="analytics-card analytics-card--muted">
-    <div class="analytics-card__label">Отменено</div>
-    <div class="analytics-card__value">{{summary.cancelled_amount_label}} руб.</div>
-    <div class="analytics-card__hint">Не включать в бюджет</div>
+    <div class="analytics-card__label">Учёт не заполнен</div>
+    <div class="analytics-card__value">{{summary.accounting_missing_count}}</div>
+    <div class="analytics-card__hint">Нужно заполнить бухгалтерские поля</div>
   </div>
 </div>
 
 {{#if hasRows}}
+<div class="analytics-anchor-nav mb-3">
+  <a href="#budget">Бюджет</a>
+  <a href="#fact">Факт</a>
+  <a href="#payments">Оплаты</a>
+  <a href="#documents">Документы</a>
+  <a href="#details">Детализация</a>
+</div>
+
 <div class="row g-4">
-  <div class="col-12 col-xl-6">
+  <div class="col-12 col-xl-6" id="budget">
     <section class="report-section">
-      <h2>По месяцам</h2>
+      <h2>Бюджет по месяцам</h2>
       <div class="table-responsive">
         <table class="table table-bordered align-middle">
           <thead class="table-dark">
             <tr>
-              <th>Период</th>
+              <th>Фин. месяц</th>
               <th>Заявок</th>
-              <th>Сумма</th>
-              <th>Доля</th>
+              <th>План</th>
+              <th>Факт</th>
+              <th>Отклонение</th>
             </tr>
           </thead>
           <tbody>
@@ -121,8 +177,9 @@
             <tr>
               <td>{{period}}</td>
               <td>{{orders_count}}</td>
-              <td>{{amount_label}} руб.</td>
-              <td>{{share_label}}%</td>
+              <td>{{planned_amount_label}} руб.</td>
+              <td>{{actual_amount_label}} руб.</td>
+              <td>{{variance_amount_label}} руб.</td>
             </tr>
             {{/each}}
           </tbody>
@@ -133,57 +190,25 @@
 
   <div class="col-12 col-xl-6">
     <section class="report-section">
-      <h2>По статусам</h2>
+      <h2>Статьи бюджета</h2>
       <div class="table-responsive">
         <table class="table table-bordered align-middle">
           <thead class="table-dark">
             <tr>
-              <th>Статус</th>
+              <th>Статья</th>
               <th>Заявок</th>
-              <th>Сумма</th>
-              <th>Доля</th>
-            </tr>
-          </thead>
-          <tbody>
-            {{#each statusRows}}
-            <tr>
-              <td>{{> status-badge}}</td>
-              <td>{{orders_count}}</td>
-              <td>{{amount_label}} руб.</td>
-              <td>{{share_label}}%</td>
-            </tr>
-            {{/each}}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </div>
-
-  <div class="col-12">
-    <section class="report-section">
-      <h2>Заказчики с наибольшей суммой</h2>
-      <div class="table-responsive">
-        <table class="table table-bordered align-middle">
-          <thead class="table-dark">
-            <tr>
-              <th>Заказчик</th>
-              <th>Источник</th>
-              <th>Заявок</th>
-              <th>Всего</th>
-              <th>В работе</th>
+              <th>План</th>
               <th>Факт</th>
               <th>Доля</th>
             </tr>
           </thead>
           <tbody>
-            {{#each ownerRows}}
+            {{#each categoryRows}}
             <tr>
-              <td><a href="{{owner_link}}">{{owner_label}}</a></td>
-              <td><span class="badge text-bg-light">{{source_label}}</span></td>
+              <td>{{label}}</td>
               <td>{{orders_count}}</td>
-              <td>{{amount_label}} руб.</td>
-              <td>{{active_amount_label}} руб.</td>
-              <td>{{fact_amount_label}} руб.</td>
+              <td>{{planned_amount_label}} руб.</td>
+              <td>{{actual_amount_label}} руб.</td>
               <td>{{share_label}}%</td>
             </tr>
             {{/each}}
@@ -193,26 +218,28 @@
     </section>
   </div>
 
-  <div class="col-12 col-xl-6">
+  <div class="col-12 col-xl-6" id="fact">
     <section class="report-section">
-      <h2>Товары по сумме</h2>
+      <h2>Поставщики</h2>
       <div class="table-responsive">
         <table class="table table-bordered align-middle">
           <thead class="table-dark">
             <tr>
-              <th>Товар</th>
+              <th>Поставщик</th>
               <th>Заявок</th>
-              <th>Кол-во</th>
-              <th>Сумма</th>
+              <th>План</th>
+              <th>Факт</th>
+              <th>Отклонение</th>
             </tr>
           </thead>
           <tbody>
-            {{#each productRows}}
+            {{#each supplierRows}}
             <tr>
-              <td>{{good}}</td>
+              <td>{{label}}</td>
               <td>{{orders_count}}</td>
-              <td>{{quantity_count}}</td>
-              <td>{{amount_label}} руб.</td>
+              <td>{{planned_amount_label}} руб.</td>
+              <td>{{actual_amount_label}} руб.</td>
+              <td>{{variance_amount_label}} руб.</td>
             </tr>
             {{/each}}
           </tbody>
@@ -223,26 +250,156 @@
 
   <div class="col-12 col-xl-6">
     <section class="report-section">
-      <h2>Последние строки отчёта</h2>
+      <h2>Центры затрат</h2>
       <div class="table-responsive">
         <table class="table table-bordered align-middle">
           <thead class="table-dark">
             <tr>
-              <th>Дата</th>
-              <th>Автор</th>
-              <th>Товар</th>
-              <th>Сумма</th>
-              <th>Статус</th>
+              <th>Центр</th>
+              <th>Заявок</th>
+              <th>План</th>
+              <th>Факт</th>
+              <th>Отклонение</th>
             </tr>
           </thead>
           <tbody>
-            {{#each recentOrders}}
+            {{#each costCenterRows}}
             <tr>
-              <td>{{formatDate creation_date}}</td>
-              <td>{{owner_label}}</td>
+              <td>{{label}}</td>
+              <td>{{orders_count}}</td>
+              <td>{{planned_amount_label}} руб.</td>
+              <td>{{actual_amount_label}} руб.</td>
+              <td>{{variance_amount_label}} руб.</td>
+            </tr>
+            {{/each}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12" id="payments">
+    <section class="report-section">
+      <h2>Календарь оплат</h2>
+      {{#if paymentRows}}
+      <div class="table-responsive">
+        <table class="table table-bordered align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Дата оплаты</th>
+              <th>Поставщик</th>
+              <th>Счёт</th>
+              <th>Товар</th>
+              <th>План</th>
+              <th>Оплата</th>
+              <th class="text-end">Учёт</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each paymentRows}}
+            <tr>
+              <td>{{payment_date_value}}</td>
+              <td>{{supplier_label}}</td>
+              <td>{{invoice_label}}</td>
               <td>{{good}}</td>
-              <td>{{price_label}} руб.</td>
-              <td>{{> status-badge}}</td>
+              <td>{{planned_amount_label}} руб.</td>
+              <td><span class="badge text-bg-{{payment_status_class}}">{{payment_status_label}}</span></td>
+              <td class="text-end">
+                <button class="btn btn-light btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#{{modal_id}}">Изменить</button>
+              </td>
+            </tr>
+            {{/each}}
+          </tbody>
+        </table>
+      </div>
+      {{else}}
+        {{> empty-state title="Плановых оплат нет" text="Строки появятся после заполнения даты и статуса оплаты."}}
+      {{/if}}
+    </section>
+  </div>
+
+  <div class="col-12" id="documents">
+    <section class="report-section">
+      <h2>Заказы, требующие действия</h2>
+      {{#if attentionRows}}
+      <div class="table-responsive">
+        <table class="table table-bordered align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Заказ</th>
+              <th>Автор</th>
+              <th>Поставщик</th>
+              <th>Оплата</th>
+              <th>Документы</th>
+              <th>Что проверить</th>
+              <th class="text-end">Учёт</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each attentionRows}}
+            <tr>
+              <td>
+                <div>{{good}}</div>
+                <div class="text-muted small">#{{id}} · {{planned_amount_label}} руб.</div>
+              </td>
+              <td>{{owner_label}}</td>
+              <td>{{supplier_label}}</td>
+              <td><span class="badge text-bg-{{payment_status_class}}">{{payment_status_label}}</span></td>
+              <td><span class="badge text-bg-{{document_status_class}}">{{document_status_label}}</span></td>
+              <td>
+                {{#each attention_reasons}}
+                  <span class="badge text-bg-light border">{{this}}</span>
+                {{/each}}
+              </td>
+              <td class="text-end">
+                <button class="btn btn-light btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#{{modal_id}}">Заполнить</button>
+              </td>
+            </tr>
+            {{/each}}
+          </tbody>
+        </table>
+      </div>
+      {{else}}
+        {{> empty-state title="Критичных строк нет" text="По текущей выборке нет просрочек и незаполненных документов."}}
+      {{/if}}
+    </section>
+  </div>
+
+  <div class="col-12" id="details">
+    <section class="report-section">
+      <h2>Детализация заказов</h2>
+      <div class="table-responsive">
+        <table class="table table-bordered align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Заказ</th>
+              <th>Автор</th>
+              <th>Статья</th>
+              <th>Поставщик</th>
+              <th>План</th>
+              <th>Факт</th>
+              <th>Оплата</th>
+              <th>Документы</th>
+              <th class="text-end">Учёт</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each detailRows}}
+            <tr>
+              <td>
+                <div>{{good}}</div>
+                <div class="text-muted small">#{{id}} · {{formatDate creation_date}}</div>
+              </td>
+              <td><a href="/dashboard/vieworder/{{owner_type}}/{{owner_ref}}?scope=all">{{owner_label}}</a></td>
+              <td>{{budget_category_label}}</td>
+              <td>{{supplier_label}}</td>
+              <td>{{planned_amount_label}} руб.</td>
+              <td>{{actual_amount_label}} руб.</td>
+              <td><span class="badge text-bg-{{payment_status_class}}">{{payment_status_label}}</span></td>
+              <td><span class="badge text-bg-{{document_status_class}}">{{document_status_label}}</span></td>
+              <td class="text-end">
+                <button class="btn btn-light btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#{{modal_id}}">Изменить</button>
+              </td>
             </tr>
             {{/each}}
           </tbody>
@@ -253,8 +410,109 @@
 </div>
 {{else}}
   {{#if hasFilters}}
-    {{> empty-state title="По фильтрам ничего не найдено" text="Измените период, сценарий отчёта или поиск."}}
+    {{> empty-state title="По фильтрам ничего не найдено" text="Измените период, сценарий или условия поиска."}}
   {{else}}
     {{> empty-state title="Данных для аналитики пока нет" text="Отчёт появится после оформления первых заказов."}}
   {{/if}}
 {{/if}}
+
+{{#each accountingForms}}
+<div class="modal fade" id="{{modal_id}}" tabindex="-1" aria-labelledby="{{modal_id}}-title" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <form method="POST" action="/analytics/{{id}}/accounting">
+        <input type="hidden" name="return_to" value="{{../currentUrl}}">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title fs-5" id="{{modal_id}}-title">Учёт заказа #{{id}}</h2>
+            <div class="text-muted small">{{good}} · {{owner_label}}</div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12 col-md-6 col-xl-3">
+              <label class="form-label" for="{{modal_id}}-budget-category">Статья бюджета</label>
+              <input class="form-control" id="{{modal_id}}-budget-category" name="budget_category" value="{{budget_category}}">
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+              <label class="form-label" for="{{modal_id}}-cost-center">Центр затрат</label>
+              <input class="form-control" id="{{modal_id}}-cost-center" name="cost_center" value="{{cost_center}}">
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+              <label class="form-label" for="{{modal_id}}-supplier">Поставщик</label>
+              <input class="form-control" id="{{modal_id}}-supplier" name="supplier_name" value="{{supplier_name}}">
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+              <label class="form-label" for="{{modal_id}}-invoice-number">Номер счёта</label>
+              <input class="form-control" id="{{modal_id}}-invoice-number" name="invoice_number" value="{{invoice_number}}">
+            </div>
+
+            <div class="col-12 col-md-6 col-xl-3">
+              <label class="form-label" for="{{modal_id}}-invoice-date">Дата счёта</label>
+              <input class="form-control" id="{{modal_id}}-invoice-date" type="date" name="invoice_date" value="{{invoice_date_value}}">
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+              <label class="form-label" for="{{modal_id}}-payment-status">Статус оплаты</label>
+              <select class="form-select" id="{{modal_id}}-payment-status" name="payment_status">
+                {{#each payment_status_options}}
+                  <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+                {{/each}}
+              </select>
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+              <label class="form-label" for="{{modal_id}}-payment-date">Дата оплаты</label>
+              <input class="form-control" id="{{modal_id}}-payment-date" type="date" name="payment_date" value="{{payment_date_value}}">
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+              <label class="form-label" for="{{modal_id}}-fiscal-period">Финансовый месяц</label>
+              <input class="form-control" id="{{modal_id}}-fiscal-period" type="month" name="fiscal_period" value="{{fiscal_period_value}}">
+            </div>
+
+            <div class="col-12 col-md-6 col-xl-3">
+              <label class="form-label" for="{{modal_id}}-planned">Плановая сумма</label>
+              <input class="form-control" id="{{modal_id}}-planned" type="number" min="0" step="0.01" name="planned_amount" value="{{planned_amount_value}}">
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+              <label class="form-label" for="{{modal_id}}-actual">Фактическая сумма</label>
+              <input class="form-control" id="{{modal_id}}-actual" type="number" min="0" step="0.01" name="actual_amount" value="{{actual_amount_value}}">
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+              <label class="form-label" for="{{modal_id}}-vat">НДС</label>
+              <input class="form-control" id="{{modal_id}}-vat" type="number" min="0" step="0.01" name="vat_amount" value="{{vat_amount_value}}">
+            </div>
+            <div class="col-12 col-md-6 col-xl-3">
+              <label class="form-label" for="{{modal_id}}-document-status">Документы</label>
+              <select class="form-select" id="{{modal_id}}-document-status" name="document_status">
+                {{#each document_status_options}}
+                  <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+                {{/each}}
+              </select>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label" for="{{modal_id}}-comment">Комментарий для учёта</label>
+              <textarea class="form-control" id="{{modal_id}}-comment" name="comment" rows="3">{{accounting_comment}}</textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary">Сохранить учёт</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{{/each}}
+
+<div id="snackbar">{{alert}}</div>
+<script src="/javascript/snackbar.js"></script>
+<script>
+  if ("{{alert}}") {
+    var message = "{{alert}}";
+    if (message !== undefined && message !== null) {
+      snackBAR(message);
+    }
+  }
+</script>

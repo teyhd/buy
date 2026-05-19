@@ -114,6 +114,29 @@ body {
     margin-bottom: 12px;
 }
 
+.analytics-anchor-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.analytics-anchor-nav a {
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    color: #212529;
+    padding: 8px 12px;
+    text-decoration: none;
+}
+
+.analytics-anchor-nav a:hover {
+    background: #f1f3f5;
+}
+
+.report-section {
+    scroll-margin-top: 90px;
+}
+
 .error-page {
     margin: 120px auto 0;
     max-width: 620px;
