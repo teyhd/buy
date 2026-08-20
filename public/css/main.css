@@ -122,6 +122,16 @@ body {
     vertical-align: middle;
 }
 
+.manage-orders-table th:nth-child(2),
+.manage-orders-table td:nth-child(2) {
+    min-width: 360px;
+    width: 360px;
+}
+
+.manage-orders-table .table-expand-text {
+    max-width: 360px;
+}
+
 .table-link {
     display: inline-block;
     max-width: 260px;
