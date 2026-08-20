@@ -26,10 +26,15 @@ test('formats a short order notification with current values', () => {
     const notification = formatOrderNotification('created', { order, actor });
 
     assert.equal(notification.title, 'Закупки');
-    assert.match(notification.text, /Пользователь Иван Петров \(ID 42\) добавил заказ #17/);
-    assert.match(notification.text, /Кол-во: 2; цена: 1250,50 ₽/);
-    assert.match(notification.text, /ссылка: https:\/\/shop\.example\/item/);
-    assert.match(notification.text, /комментарий: для кафедры/);
+    assert.equal(
+        notification.text,
+        'Пользователь: Иван Петров (ID 42)\n'
+            + 'Добавил заказ #17\n'
+            + 'Товар: Ноутбук\n'
+            + 'Кол-во: 2 · Цена: 1250,50 ₽\n'
+            + 'Ссылка: https://shop.example/item\n'
+            + 'Комментарий: для кафедры',
+    );
 });
 
 test('detects only real user order changes', () => {

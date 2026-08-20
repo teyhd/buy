@@ -65,11 +65,11 @@ export function formatOrderNotification(eventType, { order, actor }) {
     const quantity = Number.isFinite(Number(order.quantity)) ? Number(order.quantity) : '—';
     const link = String(order.link || '').trim() || '—';
     const comment = compactText(order.comment, 300);
-    const commentPart = comment ? `; комментарий: ${comment}` : '';
+    const commentLine = comment ? `\nКомментарий: ${comment}` : '';
 
     return {
         title: NOTIFICATION_TITLE,
-        text: `Пользователь ${actorLabel(actor)} (ID ${actorId(actor)}) ${action} заказ #${orderId}: ${good}. Кол-во: ${quantity}; цена: ${priceLabel(order.price)} ₽; ссылка: ${link}${commentPart}`,
+        text: `Пользователь: ${actorLabel(actor)} (ID ${actorId(actor)})\n${action.charAt(0).toUpperCase()}${action.slice(1)} заказ #${orderId}\nТовар: ${good}\nКол-во: ${quantity} · Цена: ${priceLabel(order.price)} ₽\nСсылка: ${link}${commentLine}`,
     };
 }
 
