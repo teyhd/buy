@@ -20,6 +20,7 @@ config({ path: resolve(__dirname, '.env') });
 
 import {view,find,viewarchive,vieworder,myorders,findOrders,manageOrders,orderAnalytics,orderAnalyticsCsv,updateOrderAccounting,updateOrderStatus,formOrder,formOrderForUser,createOrder,createOrderForUser,editOrder,updateOrder,editOrderAdmin,updateOrderAdmin,deleteOrder,cancelOrder} from './vendor/db.js'
 import { createSsoAuth } from './vendor/ssoAuth.js'
+import { startOrderNotificationDispatcher } from './vendor/orderNotifications.js'
 
 const app = express();
 app.set('trust proxy', 1);
@@ -416,4 +417,5 @@ app.use((err, req, res, _next) => {
 app.listen(port, () => {
     console.log(`Listening on port ${port}`);
     mlog(`Listening on port ${port}`);
+    startOrderNotificationDispatcher(pool);
 });

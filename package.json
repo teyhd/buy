@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon buy.js",
-    "start": "node buy.js"
+    "start": "node buy.js",
+    "test": "node --test"
   },
   "author": "sonya",
   "license": "ISC",

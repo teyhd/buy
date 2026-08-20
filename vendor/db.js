@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 import { pool } from '../buy.js';
 import { mlog } from './logs.js';
+import { enqueueOrderNotifications, hasOrderChanged } from './orderNotifications.js';
 
 export const ORDER_STATUS = Object.freeze({
     PENDING: 'На рассмотрении',
@@ -143,6 +144,14 @@ function normalizeText(value) {
 function normalizePrice(value) {
     const normalized = String(value || '').replace(',', '.').trim();
     return normalized === '' ? null : normalized;
+}
+
+function orderNotificationActor(req) {
+    const user = req.session?.user || {};
+    return {
+        ssoId: getSsoUserId(req),
+        name: user.name || user.owner_label || user.nickname || user.msgnickname,
+    };
 }
 
 function statusOptions(selected, statuses = ALL_STATUSES) {
@@ -1768,8 +1777,8 @@ export const createOrder = async (req, res) => {
     const { good, quantity, arrival_date } = req.body;
     const link = normalizeUrl(req.body.link);
     const price = normalizePrice(req.body.price);
-    const ssoAuthorId = getSsoUserId(req);
     try {
+        const ssoAuthorId = getSsoUserId(req);
         connection = await pool.getConnection();
         await connection.beginTransaction();
         const [result] = await connection.query(
@@ -1785,6 +1794,18 @@ export const createOrder = async (req, res) => {
              VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
             [result.insertId, PAYMENT_STATUS.NOT_PLANNED, fiscalPeriodFromDate(arrival_date), price, DOCUMENT_STATUS.NONE]
         );
+        await enqueueOrderNotifications(connection, {
+            eventType: 'created',
+            order: {
+                id: result.insertId,
+                good,
+                quantity,
+                price,
+                link,
+                arrival_date,
+            },
+            actor: orderNotificationActor(req),
+        });
         await connection.commit();
         mlog('Добавлен новый заказ.');
         res.redirect('/myorders?created=' + encodeURIComponent('Новый заказ добавлен.'));
@@ -1893,15 +1914,38 @@ export const updateOrder = async (req, res) => {
     const link = normalizeUrl(req.body.link);
     const price = normalizePrice(req.body.price);
     try {
+        const ssoAuthorId = getSsoUserId(req);
         connection = await pool.getConnection();
-        const [result] = await connection.query(
-            `UPDATE orders
-             SET good = ?, quantity = ?, price = ?, link = ?, arrival_date = ?
-             WHERE id = ? AND sso_author_id = ? AND status = ?`,
-            [good, quantity, price, link, arrival_date, req.params.id, getSsoUserId(req), ORDER_STATUS.PENDING]
+        await connection.beginTransaction();
+        const [existingRows] = await connection.query(
+            `SELECT id, good, quantity, price, link, arrival_date
+             FROM orders
+             WHERE id = ? AND sso_author_id = ? AND status = ?
+             LIMIT 1
+             FOR UPDATE`,
+            [req.params.id, ssoAuthorId, ORDER_STATUS.PENDING]
         );
-        if (result.affectedRows === 0) {
+        if (existingRows.length === 0) {
+            await connection.rollback();
             return res.redirect('/myorders?error=' + encodeURIComponent('Заказ уже нельзя редактировать.'));
+        }
+
+        const nextOrder = {
+            id: Number(req.params.id),
+            good,
+            quantity,
+            price,
+            link,
+            arrival_date,
+        };
+        const changed = hasOrderChanged(existingRows[0], nextOrder);
+        if (changed) {
+            await connection.query(
+                `UPDATE orders
+                 SET good = ?, quantity = ?, price = ?, link = ?, arrival_date = ?
+                 WHERE id = ?`,
+                [good, quantity, price, link, arrival_date, req.params.id]
+            );
         }
         await connection.query(
             `INSERT INTO order_accounting
@@ -1919,9 +1963,24 @@ export const updateOrder = async (req, res) => {
                 updated_at = NOW()`,
             [req.params.id, PAYMENT_STATUS.NOT_PLANNED, fiscalPeriodFromDate(arrival_date), price, DOCUMENT_STATUS.NONE]
         );
+        if (changed) {
+            await enqueueOrderNotifications(connection, {
+                eventType: 'updated',
+                order: nextOrder,
+                actor: orderNotificationActor(req),
+            });
+        }
+        await connection.commit();
         mlog('Заказ был отредактирован пользователем.');
         res.redirect('/myorders?updated=' + encodeURIComponent('Данные заказа обновлены.'));
     } catch (err) {
+        if (connection) {
+            try {
+                await connection.rollback();
+            } catch (rollbackErr) {
+                mlog(rollbackErr);
+            }
+        }
         console.log(err);
         mlog(err);
         renderError(res, req, 500, 'Ошибка сервера', 'Не удалось обновить заказ.');
@@ -1934,16 +1993,39 @@ export const cancelOrder = async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
-        const [result] = await connection.query(
-            'UPDATE orders SET status = ? WHERE id = ? AND sso_author_id = ? AND status = ?',
-            [ORDER_STATUS.CANCELLED, req.params.id, getSsoUserId(req), ORDER_STATUS.PENDING]
+        await connection.beginTransaction();
+        const [existingRows] = await connection.query(
+            `SELECT id, good, quantity, price, link, arrival_date
+             FROM orders
+             WHERE id = ? AND sso_author_id = ? AND status = ?
+             LIMIT 1
+             FOR UPDATE`,
+            [req.params.id, getSsoUserId(req), ORDER_STATUS.PENDING]
         );
-        const key = result.affectedRows > 0 ? 'cancelled' : 'error';
-        const text = result.affectedRows > 0
-            ? 'Заказ отменён.'
-            : 'Отменить можно только заказ со статусом "На рассмотрении".';
-        res.redirect(`/myorders?${key}=${encodeURIComponent(text)}`);
+        if (existingRows.length === 0) {
+            await connection.rollback();
+            return res.redirect('/myorders?error=' + encodeURIComponent('Отменить можно только заказ со статусом "На рассмотрении".'));
+        }
+
+        await connection.query(
+            'UPDATE orders SET status = ? WHERE id = ?',
+            [ORDER_STATUS.CANCELLED, req.params.id]
+        );
+        await enqueueOrderNotifications(connection, {
+            eventType: 'cancelled',
+            order: existingRows[0],
+            actor: orderNotificationActor(req),
+        });
+        await connection.commit();
+        res.redirect('/myorders?cancelled=' + encodeURIComponent('Заказ отменён.'));
     } catch (err) {
+        if (connection) {
+            try {
+                await connection.rollback();
+            } catch (rollbackErr) {
+                mlog(rollbackErr);
+            }
+        }
         console.log(err);
         mlog(err);
         renderError(res, req, 500, 'Ошибка сервера', 'Не удалось отменить заказ.');
