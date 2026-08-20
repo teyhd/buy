@@ -101,14 +101,25 @@ This is the single source of truth for coding agents in this repository. It repl
 
 ## Nginx And Autodeploy
 - Active Nginx config: `/etc/nginx/sites-enabled/31-buy.platoniks.ru.conf`.
+- The current `buy.platoniks.ru` virtual host proxies all requests to `http://127.0.0.1:3012`; normal application releases do not require an Nginx change or reload.
 - Do not keep backup files with duplicate `server_name buy.platoniks.ru` inside `sites-enabled`; it creates duplicate host warnings.
 - Keep Nginx backups in `/etc/nginx/sites-backup`.
 - For non-interactive checks, call `nginx` with the explicit PATH above or by absolute path `/usr/sbin/nginx`.
-- Purchase Service Nginx root and API proxy are not verified; inspect the active config before changing it.
 - No verified Purchase Service autodeploy script is documented yet.
 - Do not add Nginx, cron, PM2, or deploy scripts without explicit need.
 - If deployment is requested, first inspect the actual server configuration and current project location.
 - Keep deployment changes focused and reversible.
+
+## Standard Manual Deploy To ANET
+- Deploy only a commit that has been merged into `main`; do not make application code edits directly in `/var/www/html/purchaise`.
+- The production working tree must be clean before an update. A local `.env` is expected and must remain untracked; do not replace, print, add, or edit it during a code deploy, except for a newly required setting explicitly authorized by the user for that release.
+- Connect with `ssh root@platon.teyhd.ru -p 9022`, set the documented Node.js `PATH`, then run `cd /var/www/html/purchaise`.
+- Before updating, run `git status --porcelain`, `git fetch origin`, and `git log --oneline HEAD..origin/main`. Stop if the status is not empty or the pending commits are not the intended release.
+- Update using `git pull --ff-only origin main`. Do not use a normal merge pull, `git reset --hard`, or force operations as part of a routine release.
+- Run `npm ci --omit=dev` only if `package.json` or `package-lock.json` changed in the release. The production runtime is Node.js `v22.15.0`.
+- Restart the existing process with `pm2 restart buy`. Do not use `pm2 delete` or recreate the process for a normal release; it runs `/var/www/html/purchaise/buy.js` in fork mode without watch.
+- Validate after every deploy: `curl -fsS http://127.0.0.1:3012/health`, `pm2 status buy`, `pm2 logs buy --lines 100 --nostream`, and, when external routing is relevant, `curl -fsS https://buy.platoniks.ru/health`.
+- For an authorized rollback, record the known-good commit SHA before updating, restore only that SHA after confirming the production tree is clean, reinstall dependencies if the lockfile differs, restart `buy`, and repeat the health checks. Do not alter the database as part of an application rollback without explicit approval.
 
 ## Deploy Validation
 - For documentation-only changes, no app build or runtime check is required.
@@ -120,9 +131,14 @@ This is the single source of truth for coding agents in this repository. It repl
 
 ## Git Discipline
 - This directory may not be initialized as a git repository; check before relying on git commands.
+- Start each task from an updated `main`: `git switch main` then `git pull --ff-only origin main`.
+- Create a short-lived task branch named `codex/<task>` before making code changes. Push it and merge it into `main` through review before deploying to ANET.
 - Keep changes atomic and focused.
+- Stage only explicit files, inspect `git diff --cached`, and use a clear imperative commit message before committing.
+- Do not commit `.env`, credentials, runtime logs, generated dependencies, database contents, or unrelated local changes.
 - Use clear commit messages when git is available and the user asks for a commit.
 - Push cleanly to the current branch when possible and explicitly requested.
+- Do not force-push shared branches or use the production checkout as a development branch.
 - Never run risky or destructive commands without explicit need.
 - Do not leave local-only changes without an explicit reason when working in a real git repository.
 - Work with existing user changes; do not revert unrelated edits.
@@ -133,6 +149,10 @@ This is the single source of truth for coding agents in this repository. It repl
 - Current logger writes through `vendor/logs.js`.
 - Keep important task summaries in the final response unless the user asks for a persistent report file.
 - Summaries to the user should be in Russian unless they ask for another language.
+
+## Balalaika Notifications
+- Order notifications for service administrators use `BALALAIKA_NOTIFY_URL` and `BALALAIKA_NOTIFY_KEY` from `.env`; keep the key out of git, logs, command output, and documentation.
+- The notification endpoint is called only by the persistent order-notification queue after a successful order transaction. A delivery outage must never reject or roll back a user order.
 
 ## Security
 - Do not commit new secrets or credentials.
