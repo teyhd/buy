@@ -177,6 +177,19 @@ body {
     overflow: visible;
 }
 
+.order-comment {
+    margin-top: 6px;
+}
+
+.order-comment__label {
+    display: block;
+    font-weight: 600;
+}
+
+.order-comment .table-expand-text {
+    max-width: 100%;
+}
+
 .table-actions {
     min-width: 190px;
 }

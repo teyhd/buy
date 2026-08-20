@@ -78,6 +78,7 @@ const OWNER_LABEL_SQL = `COALESCE(
 const OWNER_LABEL_SEARCH_SQL = searchTextSql(OWNER_LABEL_SQL);
 const ORDER_GOOD_SEARCH_SQL = searchTextSql('orders.good');
 const ORDER_LINK_SEARCH_SQL = searchTextSql('orders.link');
+const ORDER_COMMENT_SEARCH_SQL = searchTextSql('orders.comment');
 const ACCOUNTING_BUDGET_CATEGORY_SEARCH_SQL = searchTextSql('accounting.budget_category');
 const ACCOUNTING_COST_CENTER_SEARCH_SQL = searchTextSql('accounting.cost_center');
 const ACCOUNTING_SUPPLIER_SEARCH_SQL = searchTextSql('accounting.supplier_name');
@@ -363,8 +364,8 @@ function buildOrderFilter({ scope = 'active', status = '', q = '' }) {
 
     if (q) {
         const like = `%${q}%`;
-        where.push(`(${ORDER_GOOD_SEARCH_SQL} LIKE ? OR ${ORDER_LINK_SEARCH_SQL} LIKE ? OR ${OWNER_LABEL_SEARCH_SQL} LIKE ?)`);
-        params.push(like, like, like);
+        where.push(`(${ORDER_GOOD_SEARCH_SQL} LIKE ? OR ${ORDER_COMMENT_SEARCH_SQL} LIKE ? OR ${ORDER_LINK_SEARCH_SQL} LIKE ? OR ${OWNER_LABEL_SEARCH_SQL} LIKE ?)`);
+        params.push(like, like, like, like);
     }
 
     return {
@@ -612,10 +613,10 @@ function buildAnalyticsFilter(filters) {
     }
     if (filters.q) {
         const like = `%${filters.q}%`;
-        where.push(`(${ORDER_GOOD_SEARCH_SQL} LIKE ? OR ${ORDER_LINK_SEARCH_SQL} LIKE ? OR ${OWNER_LABEL_SEARCH_SQL} LIKE ?
+        where.push(`(${ORDER_GOOD_SEARCH_SQL} LIKE ? OR ${ORDER_COMMENT_SEARCH_SQL} LIKE ? OR ${ORDER_LINK_SEARCH_SQL} LIKE ? OR ${OWNER_LABEL_SEARCH_SQL} LIKE ?
             OR ${ACCOUNTING_SUPPLIER_SEARCH_SQL} LIKE ? OR ${ACCOUNTING_INVOICE_SEARCH_SQL} LIKE ?
             OR ${ACCOUNTING_BUDGET_CATEGORY_SEARCH_SQL} LIKE ? OR ${ACCOUNTING_COST_CENTER_SEARCH_SQL} LIKE ?)`);
-        params.push(like, like, like, like, like, like, like);
+        params.push(like, like, like, like, like, like, like, like);
     }
 
     return {
@@ -850,6 +851,7 @@ function analyticsCsv(rows) {
         'Количество',
         'Стоимость',
         'Статус',
+        'Комментарий к товару',
         'Ссылка',
     ];
     const lines = [header.map(csvValue).join(';')];
@@ -864,6 +866,7 @@ function analyticsCsv(rows) {
             row.quantity,
             row.price,
             row.status,
+            row.comment,
             row.link,
         ].map(csvValue).join(';'));
     });
@@ -896,8 +899,8 @@ async function loadMyOrdersPage(connection, req) {
         params.push(status);
     }
     if (q) {
-        where.push(`(${ORDER_GOOD_SEARCH_SQL} LIKE ? OR ${ORDER_LINK_SEARCH_SQL} LIKE ?)`);
-        params.push(`%${q}%`, `%${q}%`);
+        where.push(`(${ORDER_GOOD_SEARCH_SQL} LIKE ? OR ${ORDER_COMMENT_SEARCH_SQL} LIKE ? OR ${ORDER_LINK_SEARCH_SQL} LIKE ?)`);
+        params.push(`%${q}%`, `%${q}%`, `%${q}%`);
     }
 
     const whereSql = `WHERE ${where.join(' AND ')}`;
@@ -1776,6 +1779,7 @@ export const createOrder = async (req, res) => {
     let connection;
     const { good, quantity, arrival_date } = req.body;
     const link = normalizeUrl(req.body.link);
+    const comment = normalizeText(req.body.comment) || null;
     const price = normalizePrice(req.body.price);
     try {
         const ssoAuthorId = getSsoUserId(req);
@@ -1783,10 +1787,10 @@ export const createOrder = async (req, res) => {
         await connection.beginTransaction();
         const [result] = await connection.query(
             `INSERT INTO orders
-             SET good = ?, quantity = ?, price = ?, link = ?, creation_date = NOW(),
-                 arrival_date = ?, author_id = NULL, sso_author_id = ?, created_by_sso_id = ?,
-                 created_mode = ?, status = ?`,
-            [good, quantity, price, link, arrival_date, ssoAuthorId, ssoAuthorId, 'self', ORDER_STATUS.PENDING]
+             SET good = ?, quantity = ?, price = ?, link = ?, comment = ?, creation_date = NOW(),
+                  arrival_date = ?, author_id = NULL, sso_author_id = ?, created_by_sso_id = ?,
+                  created_mode = ?, status = ?`,
+            [good, quantity, price, link, comment, arrival_date, ssoAuthorId, ssoAuthorId, 'self', ORDER_STATUS.PENDING]
         );
         await connection.query(
             `INSERT INTO order_accounting
@@ -1802,6 +1806,7 @@ export const createOrder = async (req, res) => {
                 quantity,
                 price,
                 link,
+                comment,
                 arrival_date,
             },
             actor: orderNotificationActor(req),
@@ -1829,6 +1834,7 @@ export const createOrderForUser = async (req, res) => {
     let connection;
     const { good, quantity, arrival_date } = req.body;
     const link = normalizeUrl(req.body.link);
+    const comment = normalizeText(req.body.comment) || null;
     const price = normalizePrice(req.body.price);
     const creatorId = getSsoUserId(req);
     const ownerId = normalizeId(req.body.owner_sso_id);
@@ -1848,10 +1854,10 @@ export const createOrderForUser = async (req, res) => {
         await connection.beginTransaction();
         const [result] = await connection.query(
             `INSERT INTO orders
-             SET good = ?, quantity = ?, price = ?, link = ?, creation_date = NOW(),
-                 arrival_date = ?, author_id = NULL, sso_author_id = ?, created_by_sso_id = ?,
-                 created_mode = ?, status = ?`,
-            [good, quantity, price, link, arrival_date, ownerId, creatorId, createdMode, ORDER_STATUS.PENDING]
+             SET good = ?, quantity = ?, price = ?, link = ?, comment = ?, creation_date = NOW(),
+                  arrival_date = ?, author_id = NULL, sso_author_id = ?, created_by_sso_id = ?,
+                  created_mode = ?, status = ?`,
+            [good, quantity, price, link, comment, arrival_date, ownerId, creatorId, createdMode, ORDER_STATUS.PENDING]
         );
         await connection.query(
             `INSERT INTO order_accounting
@@ -1912,13 +1918,14 @@ export const updateOrder = async (req, res) => {
     let connection;
     const { good, quantity, arrival_date } = req.body;
     const link = normalizeUrl(req.body.link);
+    const comment = normalizeText(req.body.comment) || null;
     const price = normalizePrice(req.body.price);
     try {
         const ssoAuthorId = getSsoUserId(req);
         connection = await pool.getConnection();
         await connection.beginTransaction();
         const [existingRows] = await connection.query(
-            `SELECT id, good, quantity, price, link, arrival_date
+            `SELECT id, good, quantity, price, link, comment, arrival_date
              FROM orders
              WHERE id = ? AND sso_author_id = ? AND status = ?
              LIMIT 1
@@ -1936,15 +1943,16 @@ export const updateOrder = async (req, res) => {
             quantity,
             price,
             link,
+            comment,
             arrival_date,
         };
         const changed = hasOrderChanged(existingRows[0], nextOrder);
         if (changed) {
             await connection.query(
                 `UPDATE orders
-                 SET good = ?, quantity = ?, price = ?, link = ?, arrival_date = ?
+                 SET good = ?, quantity = ?, price = ?, link = ?, comment = ?, arrival_date = ?
                  WHERE id = ?`,
-                [good, quantity, price, link, arrival_date, req.params.id]
+                [good, quantity, price, link, comment, arrival_date, req.params.id]
             );
         }
         await connection.query(
@@ -1995,7 +2003,7 @@ export const cancelOrder = async (req, res) => {
         connection = await pool.getConnection();
         await connection.beginTransaction();
         const [existingRows] = await connection.query(
-            `SELECT id, good, quantity, price, link, arrival_date
+            `SELECT id, good, quantity, price, link, comment, arrival_date
              FROM orders
              WHERE id = ? AND sso_author_id = ? AND status = ?
              LIMIT 1

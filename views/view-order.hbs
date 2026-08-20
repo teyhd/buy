@@ -47,7 +47,10 @@
     <tbody>
       {{#each orders}}
       <tr>
-        <td>{{> expandable-text text=this.good}}</td>
+        <td>
+          {{> expandable-text text=this.good}}
+          {{> order-comment}}
+        </td>
         <td>{{this.quantity}}</td>
         <td>{{this.price_label}} руб.</td>
         <td><a class="table-link" href="{{this.link}}" target="_blank" rel="noopener noreferrer">{{this.link_label}}</a></td>

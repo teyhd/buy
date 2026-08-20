@@ -29,6 +29,13 @@
   </div>
 
   <div class="mb-3">
+    <label class="form-label" for="order-comment">Комментарий к товару</label>
+    <textarea class="form-control {{#if fieldErrors.comment}}is-invalid{{/if}}" id="order-comment" name="comment" rows="2" maxlength="1000">{{order.comment}}</textarea>
+    <div class="form-text">Например: не срочно, для кафедры.</div>
+    {{#if fieldErrors.comment}}<div class="invalid-feedback">{{fieldErrors.comment}}</div>{{/if}}
+  </div>
+
+  <div class="mb-3">
     <label class="form-label" for="order-arrival-date">Желаемая дата доставки</label>
     <input type="date" class="form-control {{#if fieldErrors.arrival_date}}is-invalid{{/if}}" id="order-arrival-date" value="{{formatDateInput order.arrival_date}}" placeholder="Желаемая дата доставки" name="arrival_date" required>
     {{#if fieldErrors.arrival_date}}<div class="invalid-feedback">{{fieldErrors.arrival_date}}</div>{{/if}}

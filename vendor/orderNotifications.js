@@ -64,10 +64,12 @@ export function formatOrderNotification(eventType, { order, actor }) {
     const good = compactText(order.good, 120) || 'без названия';
     const quantity = Number.isFinite(Number(order.quantity)) ? Number(order.quantity) : '—';
     const link = String(order.link || '').trim() || '—';
+    const comment = compactText(order.comment, 300);
+    const commentPart = comment ? `; комментарий: ${comment}` : '';
 
     return {
         title: NOTIFICATION_TITLE,
-        text: `Пользователь ${actorLabel(actor)} (ID ${actorId(actor)}) ${action} заказ #${orderId}: ${good}. Кол-во: ${quantity}; цена: ${priceLabel(order.price)} ₽; ссылка: ${link}`,
+        text: `Пользователь ${actorLabel(actor)} (ID ${actorId(actor)}) ${action} заказ #${orderId}: ${good}. Кол-во: ${quantity}; цена: ${priceLabel(order.price)} ₽; ссылка: ${link}${commentPart}`,
     };
 }
 
@@ -81,6 +83,7 @@ export function hasOrderChanged(existingOrder, nextOrder) {
         || Number(existingOrder.quantity) !== Number(nextOrder.quantity)
         || Number(existingOrder.price) !== Number(nextOrder.price)
         || String(existingOrder.link || '') !== String(nextOrder.link || '')
+        || String(existingOrder.comment || '') !== String(nextOrder.comment || '')
         || dateOnly(existingOrder.arrival_date) !== dateOnly(nextOrder.arrival_date);
 }
 

@@ -18,6 +18,7 @@ const order = {
     quantity: 2,
     price: '1250.5',
     link: 'https://shop.example/item',
+    comment: 'для кафедры',
     arrival_date: '2026-08-20',
 };
 
@@ -28,11 +29,13 @@ test('formats a short order notification with current values', () => {
     assert.match(notification.text, /Пользователь Иван Петров \(ID 42\) добавил заказ #17/);
     assert.match(notification.text, /Кол-во: 2; цена: 1250,50 ₽/);
     assert.match(notification.text, /ссылка: https:\/\/shop\.example\/item/);
+    assert.match(notification.text, /комментарий: для кафедры/);
 });
 
 test('detects only real user order changes', () => {
     assert.equal(hasOrderChanged(order, { ...order }), false);
     assert.equal(hasOrderChanged(order, { ...order, quantity: 3 }), true);
+    assert.equal(hasOrderChanged(order, { ...order, comment: 'не срочно' }), true);
     assert.equal(hasOrderChanged(order, { ...order, arrival_date: '2026-08-21' }), true);
 });
 

@@ -32,6 +32,7 @@ CREATE TABLE `orders` (
   `good` varchar(255) NOT NULL,
   `quantity` int(11) NOT NULL,
   `link` varchar(2048) NOT NULL,
+  `comment` text DEFAULT NULL,
   `creation_date` datetime DEFAULT NULL,
   `arrival_date` datetime DEFAULT NULL,
   `author_id` bigint(20) UNSIGNED DEFAULT NULL,

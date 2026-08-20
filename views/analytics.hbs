@@ -8,7 +8,7 @@
   <form class="analytics-filter row g-2 align-items-end mt-3" method="GET" action="/analytics" novalidate>
     <div class="col-12 col-lg-4">
       <label class="form-label" for="analytics-q">Поиск</label>
-      <input class="form-control" id="analytics-q" type="search" name="q" value="{{filters.q}}" placeholder="Товар, заказчик, ссылка, поставщик или счёт">
+      <input class="form-control" id="analytics-q" type="search" name="q" value="{{filters.q}}" placeholder="Товар, комментарий, заказчик, ссылка, поставщик или счёт">
     </div>
     <div class="col-12 col-md-6 col-lg-3">
       <label class="form-label" for="analytics-scope">Сценарий</label>
@@ -301,7 +301,10 @@
               <td>{{payment_date_label}}</td>
               <td>{{> expandable-text text=supplier_label}}</td>
               <td>{{> expandable-text text=invoice_label}}</td>
-              <td>{{> expandable-text text=good}}</td>
+              <td>
+                {{> expandable-text text=good}}
+                {{> order-comment}}
+              </td>
               <td>{{planned_amount_label}} руб.</td>
               <td><span class="badge text-bg-{{payment_status_class}}">{{payment_status_label}}</span></td>
               <td class="text-end">
@@ -340,6 +343,7 @@
             <tr>
               <td>
                 {{> expandable-text text=good}}
+                {{> order-comment}}
                 <div class="text-muted small">#{{id}} · {{planned_amount_label}} руб.</div>
               </td>
               <td>{{> expandable-text text=owner_label}}</td>
@@ -388,6 +392,7 @@
             <tr>
               <td>
                 {{> expandable-text text=good}}
+                {{> order-comment}}
                 <div class="text-muted small">#{{id}} · {{formatDate creation_date}}</div>
               </td>
               <td><a href="/dashboard/vieworder/{{owner_type}}/{{owner_ref}}?scope=all">{{owner_label}}</a></td>
