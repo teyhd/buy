@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 import { pool } from '../buy.js';
 import { mlog } from './logs.js';
+import { BLOCKED_LINK_CODE, BLOCKED_LINK_MESSAGE, isBlockedOrderLink, normalizeOrderLink } from '../public/javascript/order-link-policy.js';
 import { enqueueOrderNotifications, hasOrderChanged } from './orderNotifications.js';
 
 export const ORDER_STATUS = Object.freeze({
@@ -732,11 +733,40 @@ function appendWhere(whereSql, condition) {
     return whereSql ? `${whereSql} AND ${condition}` : `WHERE ${condition}`;
 }
 
-function normalizeUrl(value) {
-    const text = normalizeText(value);
-    if (!text) return '';
-    if (/^https?:\/\//i.test(text)) return text;
-    return `https://${text}`;
+const normalizeUrl = normalizeOrderLink;
+
+function orderFormErrors(req, existingLink = '') {
+    const fieldErrors = { ...req.orderFieldErrors };
+    if (isBlockedOrderLink(req.body.link, existingLink)) {
+        fieldErrors.link = BLOCKED_LINK_MESSAGE;
+    }
+    return fieldErrors;
+}
+
+async function renderOrderFormErrors(req, res, fieldErrors, { admin = false, creating = false, existingLink = '' } = {}) {
+    const blocked = fieldErrors.link === BLOCKED_LINK_MESSAGE;
+    const message = blocked ? BLOCKED_LINK_MESSAGE : 'Проверьте поля формы.';
+    res.status(422);
+    if (wantsJson(req)) {
+        return res.json({ ok: false, message, fieldErrors, ...(blocked ? { code: BLOCKED_LINK_CODE } : {}) });
+    }
+    if (blocked) req.body.link = '';
+    res.locals.blockedOrderLink = blocked;
+    res.locals.originalOrderLink = existingLink;
+    if (creating && admin) return formOrderForUser(req, res, fieldErrors, message);
+    return res.render(creating ? 'add-order' : admin ? 'edit-order-admin' : 'edit-order', {
+        title: creating ? 'Новый заказ' : 'Изменение заказа',
+        pageTitle: 'Оформить новый заказ',
+        formAction: '/myorders/addorder',
+        breadcrumbRootHref: '/myorders',
+        breadcrumbRootText: 'Мои заказы',
+        alert: message,
+        fieldErrors,
+        order: { ...req.body, id: req.params.id },
+        cancelUrl: admin ? '/manageorders' : '/myorders',
+        isAuthenticated: req.session.isAuthenticated,
+        user: req.session.user,
+    });
 }
 
 function ssoUserLabel(row) {
@@ -1106,6 +1136,7 @@ export const editOrderAdmin = async (req, res) => {
         res.render('edit-order-admin', {
             title: 'Изменение заказа',
             order: attachOrderUi(rows[0]),
+            originalOrderLink: rows[0].link,
             isAuthenticated: req.session.isAuthenticated,
             user: req.session.user,
         });
@@ -1132,12 +1163,20 @@ export const updateOrderAdmin = async (req, res) => {
 
     try {
         connection = await pool.getConnection();
-        const [existingRows] = await connection.query('SELECT id FROM orders WHERE id = ? LIMIT 1', [orderId]);
+        await connection.beginTransaction();
+        const [existingRows] = await connection.query('SELECT id, link FROM orders WHERE id = ? LIMIT 1 FOR UPDATE', [orderId]);
         if (existingRows.length === 0) {
+            await connection.rollback();
             if (wantsJson(req)) {
                 return res.status(404).json({ ok: false, message: 'Заказ не найден или был удалён.' });
             }
             return renderError(res, req, 404, 'Заказ не найден', 'Заказ не найден или был удалён.');
+        }
+
+        const fieldErrors = orderFormErrors(req, existingRows[0].link);
+        if (Object.keys(fieldErrors).length) {
+            await connection.rollback();
+            return renderOrderFormErrors(req, res, fieldErrors, { admin: true, existingLink: existingRows[0].link });
         }
 
         await connection.query(
@@ -1145,6 +1184,7 @@ export const updateOrderAdmin = async (req, res) => {
             [quantity, price, link, orderId]
         );
 
+        await connection.commit();
         mlog('Заказ был отредактирован администратором.');
         if (wantsJson(req)) {
             const [rows] = await connection.query(
@@ -1173,6 +1213,9 @@ export const updateOrderAdmin = async (req, res) => {
 
         res.redirect('/manageorders?updated=' + encodeURIComponent('Данные заказа обновлены.'));
     } catch (err) {
+        if (connection) {
+            try { await connection.rollback(); } catch (rollbackErr) { mlog(rollbackErr); }
+        }
         console.log(err);
         mlog(err);
         if (wantsJson(req)) {
@@ -1776,6 +1819,8 @@ export const formOrderForUser = async (req, res, fieldErrors = {}, alert = null)
 };
 
 export const createOrder = async (req, res) => {
+    const fieldErrors = orderFormErrors(req);
+    if (Object.keys(fieldErrors).length) return renderOrderFormErrors(req, res, fieldErrors, { creating: true });
     let connection;
     const { good, quantity, arrival_date } = req.body;
     const link = normalizeUrl(req.body.link);
@@ -1831,6 +1876,8 @@ export const createOrder = async (req, res) => {
 };
 
 export const createOrderForUser = async (req, res) => {
+    const fieldErrors = orderFormErrors(req);
+    if (Object.keys(fieldErrors).length) return renderOrderFormErrors(req, res, fieldErrors, { creating: true, admin: true });
     let connection;
     const { good, quantity, arrival_date } = req.body;
     const link = normalizeUrl(req.body.link);
@@ -1901,6 +1948,7 @@ export const editOrder = async (req, res) => {
         res.render('edit-order', {
             title: 'Изменение заказа',
             order: attachOrderUi(rows[0]),
+            originalOrderLink: rows[0].link,
             cancelUrl: '/myorders',
             isAuthenticated: req.session.isAuthenticated,
             user: req.session.user,
@@ -1935,6 +1983,12 @@ export const updateOrder = async (req, res) => {
         if (existingRows.length === 0) {
             await connection.rollback();
             return res.redirect('/myorders?error=' + encodeURIComponent('Заказ уже нельзя редактировать.'));
+        }
+
+        const fieldErrors = orderFormErrors(req, existingRows[0].link);
+        if (Object.keys(fieldErrors).length) {
+            await connection.rollback();
+            return renderOrderFormErrors(req, res, fieldErrors, { existingLink: existingRows[0].link });
         }
 
         const nextOrder = {

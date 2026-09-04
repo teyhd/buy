@@ -21,6 +21,7 @@ config({ path: resolve(__dirname, '.env') });
 import {view,find,viewarchive,vieworder,myorders,findOrders,manageOrders,orderAnalytics,orderAnalyticsCsv,updateOrderAccounting,updateOrderStatus,formOrder,formOrderForUser,createOrder,createOrderForUser,editOrder,updateOrder,editOrderAdmin,updateOrderAdmin,deleteOrder,cancelOrder} from './vendor/db.js'
 import { createSsoAuth } from './vendor/ssoAuth.js'
 import { startOrderNotificationDispatcher } from './vendor/orderNotifications.js'
+import { normalizeOrderLink } from './public/javascript/order-link-policy.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -184,20 +185,15 @@ function fieldErrorsFromResult(errors) {
     return fieldErrors;
 }
 
-function wantsJson(req) {
-    return req.get('accept')?.includes('application/json')
-        || req.get('x-requested-with') === 'XMLHttpRequest';
+function collectOrderErrors(req, _res, next) {
+    req.orderFieldErrors = fieldErrorsFromResult(validationResult(req));
+    next();
 }
 
 function normalizePriceInput(value) {
     return String(value || '').replace(',', '.').trim();
 }
 
-function normalizeUrlInput(value) {
-    const text = String(value || '').trim();
-    if (!text) return text;
-    return /^https?:\/\//i.test(text) ? text : `https://${text}`;
-}
 
 function todayOrFuture(value) {
     const selected = new Date(value);
@@ -212,7 +208,7 @@ const orderValidators = [
     body('good').trim().isLength({ min: 2, max: 255 }).withMessage('Название должно быть длиной от 2 до 255 символов.'),
     body('quantity').isInt({ min: 1, max: 500 }).withMessage('Можно заказать от 1 до 500 единиц товара.'),
     body('price').customSanitizer(normalizePriceInput).isFloat({ min: 1, max: 1000000 }).withMessage('Стоимость должна быть числом от 1 до 1 000 000.'),
-    body('link').customSanitizer(normalizeUrlInput).isURL({ require_protocol: true }).withMessage('Укажите корректную ссылку.'),
+    body('link').customSanitizer(normalizeOrderLink).isURL({ require_protocol: true }).withMessage('Укажите корректную ссылку.'),
     body('comment').optional({ checkFalsy: true }).trim().isLength({ max: 1000 }).withMessage('Комментарий может содержать не более 1 000 символов.'),
     body('arrival_date').isISO8601().withMessage('Укажите дату доставки.').custom(todayOrFuture).withMessage('Желаемая дата доставки не может быть раньше текущего дня.'),
 ];
@@ -220,7 +216,7 @@ const orderValidators = [
 const adminOrderValidators = [
     body('quantity').isInt({ min: 1, max: 500 }).withMessage('Можно заказать от 1 до 500 единиц товара.'),
     body('price').customSanitizer(normalizePriceInput).isFloat({ min: 1, max: 1000000 }).withMessage('Стоимость должна быть числом от 1 до 1 000 000.'),
-    body('link').customSanitizer(normalizeUrlInput).isURL({ require_protocol: true }).withMessage('Укажите корректную ссылку.'),
+    body('link').customSanitizer(normalizeOrderLink).isURL({ require_protocol: true }).withMessage('Укажите корректную ссылку.'),
 ];
 
 // routes
@@ -275,48 +271,11 @@ app.post('/analytics/:id/accounting', ensureAuthenticated, ensureAdmin, updateOr
 app.get('/manageorders', ensureAuthenticated, ensureAdmin, manageOrders);
 app.get('/manageorders/addorder', ensureAuthenticated, ensureAdmin, formOrderForUser);
 app.post('/manageorders/addorder', ensureAuthenticated, ensureAdmin,
-    orderValidators,
-    (req, res) => {
-        const errors = validationResult(req);
-
-        if (!errors.isEmpty()) {
-            return formOrderForUser(req, res, fieldErrorsFromResult(errors), 'Проверьте поля формы.');
-        }
-
-        createOrderForUser(req, res);
-    }
+    orderValidators, collectOrderErrors, createOrderForUser
 );
 app.get('/manageorders/editorderadmin/:id', ensureAuthenticated, ensureAdmin, editOrderAdmin);
 app.post('/manageorders/editorderadmin/:id', ensureAuthenticated, ensureAdmin,
-    adminOrderValidators,
-    (req, res) => {
-        const errors = validationResult(req);
-
-        if (!errors.isEmpty()) {
-            const fieldErrors = fieldErrorsFromResult(errors);
-            if (wantsJson(req)) {
-                return res.status(422).json({
-                    ok: false,
-                    message: 'Проверьте поля формы.',
-                    fieldErrors,
-                });
-            }
-
-            return res.status(422).render('edit-order-admin', {
-                title: 'Изменение заказа',
-                alert: 'Проверьте поля формы.',
-                fieldErrors,
-                isAuthenticated: req.session.isAuthenticated,
-                user: req.session.user,
-                order: {
-                    ...req.body,
-                    id: req.params.id
-                }
-            });
-        }
-
-        updateOrderAdmin(req, res);
-    }
+    adminOrderValidators, collectOrderErrors, updateOrderAdmin
 );
 app.post('/manageorders/:id/status', ensureAuthenticated, ensureAdmin, updateOrderStatus);
 app.post('/manageorders/:id/delete', ensureAuthenticated, ensureAdmin, deleteOrder);
@@ -336,54 +295,11 @@ app.get('/myorders', ensureAuthenticated, ensureUser, myorders);
 app.post('/myorders', ensureAuthenticated, ensureUser, findOrders);
 app.get('/myorders/addorder', ensureAuthenticated, ensureUser, formOrder);
 app.post('/myorders/addorder', ensureAuthenticated, ensureUser,
-    orderValidators,
-    (req, res) => {
-        const errors = validationResult(req);
-
-        if (!errors.isEmpty()) {
-            return res.status(422).render('add-order', {
-                title: 'Новый заказ',
-                pageTitle: 'Оформить новый заказ',
-                formAction: '/myorders/addorder',
-                breadcrumbRootHref: '/myorders',
-                breadcrumbRootText: 'Мои заказы',
-                alert: 'Проверьте поля формы.',
-                fieldErrors: fieldErrorsFromResult(errors),
-                order: req.body,
-                cancelUrl: '/myorders',
-                isAuthenticated: req.session.isAuthenticated,
-                user: req.session.user
-            });
-        }
-
-        createOrder(req, res);
-    }
+    orderValidators, collectOrderErrors, createOrder
 );
-
-
 app.get('/myorders/editorder/:id', ensureAuthenticated, ensureUser, editOrder);
 app.post('/myorders/editorder/:id', ensureAuthenticated, ensureUser,
-    orderValidators,
-    (req, res) => {
-        const errors = validationResult(req);
-
-        if (!errors.isEmpty()) {
-            return res.status(422).render('edit-order', {
-                title: 'Изменение заказа',
-                alert: 'Проверьте поля формы.',
-                fieldErrors: fieldErrorsFromResult(errors),
-                isAuthenticated: req.session.isAuthenticated,
-                user: req.session.user,
-                cancelUrl: '/myorders',
-                order: {
-                    ...req.body,
-                    id: req.params.id
-                }
-            });
-        }
-
-        updateOrder(req, res);
-    }
+    orderValidators, collectOrderErrors, updateOrder
 );
 app.post('/myorders/:id/cancel', ensureAuthenticated, ensureUser, cancelOrder);
 

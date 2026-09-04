@@ -12,9 +12,9 @@
   </div>
 
   <div class="form-floating mb-3">
-    <input type="url" class="form-control {{#if fieldErrors.link}}is-invalid{{/if}}" id="admin-order-link" value="{{order.link}}" placeholder="Ссылка" name="link" required>
+    <input type="url" class="form-control {{#if fieldErrors.link}}is-invalid{{/if}}" id="admin-order-link" value="{{order.link}}" placeholder="Ссылка" name="link" data-order-link-input data-original-link="{{originalOrderLink}}" aria-describedby="admin-order-link-error" required>
     <label for="admin-order-link">Ссылка</label>
-    {{#if fieldErrors.link}}<div class="invalid-feedback">{{fieldErrors.link}}</div>{{/if}}
+    <div class="invalid-feedback" id="admin-order-link-error" data-field-error="link">{{fieldErrors.link}}</div>
   </div>
 
   <div class="d-flex justify-content-end gap-2">
