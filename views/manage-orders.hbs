@@ -127,8 +127,8 @@
 
           <div class="mb-0">
             <label class="form-label" for="edit-order-{{this.id}}-link">Ссылка</label>
-            <input class="form-control" id="edit-order-{{this.id}}-link" name="link" type="url" value="{{this.link}}" required>
-            <div class="invalid-feedback" data-field-error="link"></div>
+            <input class="form-control" id="edit-order-{{this.id}}-link" name="link" type="url" value="{{this.link}}" data-order-link-input data-original-link="{{this.link}}" aria-describedby="edit-order-{{this.id}}-link-error" required>
+            <div class="invalid-feedback" id="edit-order-{{this.id}}-link-error" data-field-error="link"></div>
           </div>
         </div>
         <div class="modal-footer">

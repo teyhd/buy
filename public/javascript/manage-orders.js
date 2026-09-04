@@ -172,6 +172,7 @@
                     if (response.status === 422) {
                         showModalError(form, data.message || 'Проверьте поля формы.');
                         applyFieldErrors(form, data.fieldErrors || {});
+                        form.dispatchEvent(new CustomEvent('order-link-rejected', { bubbles: true, detail: data }));
                         return;
                     }
 
@@ -181,6 +182,7 @@
 
                     if (data.order) {
                         updateOrderRow(data.order);
+                        form.elements.link.dataset.originalLink = data.order.link;
                     }
 
                     const modalElement = form.closest('.modal');
