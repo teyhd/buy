@@ -1,20 +1,29 @@
 import fs from 'fs-extra'
 import path from 'path'
 
-var appDir = process.cwd();
+// import request from 'request'
+// import urlencode from 'urlencode'
+
+var appDir = path.dirname(import.meta.url);
+appDir = appDir.split('///')
+appDir = appDir[1]
+let test = true
+if (!test){
+  appDir = "//"+appDir
+}
 
 console.log(appDir);
 
 function curdate(minute){
     minute = (minute < 10) ? '0' + minute : minute;
     return minute;
-}
-  
+  }
+
 export function mlog (par) {
     let datecreate = new Date();
     let texta = `\n ${curdate(datecreate.getHours())}:${curdate(datecreate.getMinutes())}:${curdate(datecreate.getSeconds())}`;
     let obj = arguments;
-  
+
     for (const key in obj) {
       if (typeof obj[key]=='object') {
         for (const keys in obj[key]){
@@ -23,22 +32,36 @@ export function mlog (par) {
       } else {
         texta = `${texta} ${obj[key]}`
       }
-      
-    } 
 
-    const logsDir = path.join(appDir, 'vendor', 'logs');
-    if (!fs.existsSync(logsDir)) {
-        fs.mkdirSync(logsDir);
     }
-
-    fs.writeFileSync(path.join(logsDir, `${curdate(datecreate.getDate())}.${curdate(datecreate.getMonth()+1)} log.txt`),
+    fs.writeFileSync(path.join(appDir,'logs',`${curdate(datecreate.getDate())}.${curdate(datecreate.getMonth()+1)} log.txt`),
     texta,
     {
       encoding: "utf8",
       flag: "a+",
       mode: 0o666
     });
-  
+
     console.log(texta);
     return texta
+  }
+
+export function say(msg,all=false) {
+  var numb = (process.env.LEGACY_NUMB_RECIPIENTS || '').split(',').filter(Boolean)
+  var tgnum = (process.env.LEGACY_TGNUM_RECIPIENTS || '').split(',').filter(Boolean)
+  if (all===true){
+    numb.forEach(element => {
+      setTimeout(() => send(element,msg), 1500);
+    });
+    tgnum.forEach(element => {
+      setTimeout(() => sendtg(element,msg), 1500);
+    });
+  } else{
+    setTimeout(() => sendtg(tgnum[0],msg), 1500);
+  }
+
+}
+
+function sendtg(num,msg) {
+    request(`http://example.invalid:3334/?msg=${urlencode(msg)}&num=${urlencode(num)}`)
 }

@@ -1,35 +1,24 @@
-# Dependencies
 node_modules/
-
-# Environment and local secrets
+.venv/
+__pycache__/
 .env
 .env.*
 !.env.example
-
-# Runtime logs
 logs/
+log/
+sessions/
+uploads/
+recordings/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-vendor/logs/
-
-# OS/editor files
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-
-# Build/cache output
-dist/
-build/
-coverage/
-.cache/
-.npm/
-.playwright-mcp/
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
+*.mp4
+*.wav
+*.mp3
+*.ogg
+*.db
+*.sqlite*
+*.sql
+*.xlsx
+*.pdf
+*.pfx
+*.pem
+*.key

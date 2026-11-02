@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Список заказов</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
+    <style>
+        /* Стили для адаптивной таблицы */
+        @media only screen and (max-width: 600px) {
+            table {
+                display: none; /* Убираем таблицу на мобильных устройствах */
+            }
+
+            .order-card {
+                margin-bottom: 20px;
+                padding: 10px;
+                border: 1px solid #ccc;
+                border-radius: 10px;
+                background: #f9f9f9;
+                word-wrap: break-word; /* Разрывает длинные слова */
+            }
+
+            .order-card h5 {
+                margin: 0;
+                padding: 0;
+                font-size: 1.2em;
+            }
+
+            .order-card .card-content {
+                padding: 0;
+            }
+
+            .order-card .card-content div {
+                margin-bottom: 10px;
+            }
+
+            .order-card a {
+                word-wrap: break-word; /* Разрывает длинные ссылки */
+                overflow-wrap: break-word; /* Разрывает длинные ссылки */
+                display: block; /* Делаем ссылку блочным элементом */
+                text-overflow: ellipsis; /* Обрезаем длинные ссылки с троеточием */
+                white-space: nowrap; /* Не позволяет ссылке переноситься на новую строку */
+                overflow: hidden; /* Скрывает переполнение */
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Список заказов</h1>
+    <form method="GET" action="/adminzakaz">
+        <div class="input-field col s12">
+            <select name="status" id="statusFilter">
+                <option value="" disabled selected>Выберите статус</option>
+                <option value=" ">Все (Сначала новые)</option>
+                <option value="На рассмотрении">На рассмотрении</option>
+                <option value="ОДОБРЕН">Одобрен</option>
+            </select>
+            <label>Фильтр по статусу</label>
+        </div>
+        <button type="submit" class="btn">Фильтровать</button>
+    </form>
+
+    <table class="highlight">
+        <thead>
+            <tr>
+                <th>Название товара</th>
+                <th>URL</th>
+                <th>Дата начала</th>
+                <th>Автор</th>
+                <th>Статус</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{#each orders}}
+            <tr>
+                <td>{{this.ProductName}}</td>
+                <td><a href="{{this.URL}}" target="_blank">{{this.URL}}</a></td>
+                <td>{{dateFormat this.StartDate}}</td>
+                <td>{{this.Author}}</td>
+                <td>
+                    <form method="POST" action="/update-status">
+                        <div class="input-field col">
+                            <select name="status">
+                                <option value=" " disabled selected>{{this.Status}}</option>
+                                <option value="На рассмотрении">На рассмотрении</option>
+                                <option value="ОДОБРЕН">Одобрен</option>
+                            </select>
+                        </div>
+                        <input type="hidden" name="orderId" value="{{this.OrderID}}" />
+                        <input type="submit" class="btn btn-outline-danger" value="Обновление статуса" />
+                    </form>
+                </td>
+            </tr>
+            {{/each}}
+        </tbody>
+    </table>
+
+    <!-- Карточки для мобильных устройств -->
+    <div class="container">
+        {{#each orders}}
+        <div class="order-card">
+            <h5>{{this.ProductName}}</h5>
+            <p><strong>URL:</strong> <a href="{{this.URL}}" target="_blank">{{this.URL}}</a></p>
+            <p><strong>Дата начала:</strong> {{dateFormat this.StartDate}}</p>
+            <p><strong>Автор:</strong> {{this.Author}}</p>
+            <form method="POST" action="/update-status">
+                <div class="input-field col">
+                    <select name="status">
+                        <option value=" " disabled selected>{{this.Status}}</option>
+                        <option value="На рассмотрении">На рассмотрении</option>
+                        <option value="ОДОБРЕН">Одобрен</option>
+                    </select>
+                </div>
+                <input type="hidden" name="orderId" value="{{this.OrderID}}" />
+                <input type="submit" class="btn btn-outline-danger" value="Обновление статуса" />
+            </form>
+        </div>
+        {{/each}}
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var elems = document.querySelectorAll('select');
+            var instances = M.FormSelect.init(elems, {});
+        });
+    </script>
+</body>
+</html>

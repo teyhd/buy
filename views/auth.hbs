@@ -1,0 +1,83 @@
+<section class="h-100 gradient-form" style="background-color: #ffffff; height: 100vh;">
+  <div class="valign-wrapper" style="height: 100%; justify-content: center;">
+    <div class="row d-flex justify-content-center align-items-center">
+      <div class="col-xl-10">
+        <div class="rounded-3 text-black">
+          <div class="row g-0">
+            <div class="col-lg-6">
+              <div class="card-body p-md-5 mx-md-4">
+
+              <style>
+                .centered {
+                  width: 200px;
+                  margin: 0 auto;
+                  text-align: center;
+                }
+                .centered-form {
+                  width: 400px;
+                  margin: 0 auto;
+                }
+                .button-container {
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                }
+              </style>
+
+              <div class="centered">
+                <div class="text">
+                  <img src="https://prosto.education/wp-content/uploads/2023/04/24.png" style="width: 185px; flex-wrap: wrap;" alt="logo">
+                  <h4 class="mt-1 mb-5 pb-1">Х</h4>
+                </div>
+              </div>
+
+              <div class="centered-form">
+                <form id="auth-form" class="col s12 m12 offset-m0">
+                  <label class="form-label " for="form2Example11">Имя пользователя</label>
+                  <input type="text" name="username" class="form-control" placeholder="Username" aria-label="username" required>
+
+                  <label class="form-label" for="form2Example22">Пароль</label>
+                  <input type="password" name="password" class="form-control" placeholder="Password" aria-label="password" required>
+
+                  <div class="text-center pt-1 mb-5 pb-1">
+                    <button type="submit" id="ath" class="btn btn-primary btn-block fa-lg gradient-custom-2 mb-3 col s12 m12 offset-m0">Войти</button>
+                  </div>
+                </form>
+                <div class="button-container col s12 m12 offset-m0">
+                  <p class="mb-0 me-2">Нет аккаунта?</p>
+                  <form action="/reg" method="get"><button type="submit" class="btn btn-outline-danger">Создать</button></form>
+                </div>
+              </div>
+
+            </div>
+          </div>
+          <div class="col-lg-6 d-flex align-items-center gradient-custom-2">
+            <div class="text-black px-3 py-4 p-md-5 mx-md-4">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+$(document).ready(function() {
+  $("#auth-form").submit(function(e) {
+    e.preventDefault();
+    $.post("/myzakaz", $(this).serialize())
+      .done(function(data) {
+        if (data.status === "ok") {
+          M.toast({html: 'Авторизация успешна', classes: 'rounded teal lighten-1'});
+          window.location.href = data.redirectUrl;
+        } else {
+          M.toast({html: data.message, classes: 'rounded red lighten-1'});
+        }
+      })
+      .fail(function(err) {
+        M.toast({html: 'Произошла ошибка при авторизации', classes: 'rounded red lighten-1'});
+      });
+  });
+});
+</script>
+
+</section>

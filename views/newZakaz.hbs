@@ -1,0 +1,148 @@
+<section class="h-100 gradient-form" style="background-color: #ffffff; min-height: 100vh; display: flex; justify-content: center; align-items: center;">
+  <div class="valign-wrapper" style="height: 100%; justify-content: center;"></div>
+  <div class="row d-flex justify-content-center align-items-center w-100">
+    <div class="col-xl-10">
+      <div class="rounded-3 text-black">
+        <div class="row g-0">
+          <div class="col-lg-6">
+            <div class="card-body p-md-5 mx-md-4">
+              <style>
+                .h-100.gradient-form {
+  min-height: calc(100vh - 60px); /* Учитываем высоту хедера */
+  padding-top: 60px; /* Добавляем отступ сверху, равный высоте хедера */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+                .centered {
+                  width: 200px;
+                  margin: 0 auto;
+                  text-align: center;
+                }
+                .centered-form {
+                  width: 400px;
+                  margin: 0 auto;
+                }
+                .button-container {
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                }
+                .datepicker-input {
+                  cursor: pointer; /* Изменяет курсор на указатель, чтобы показать, что элемент кликабельный */
+                }
+                .datepicker-input[readonly] {
+                  background-color: #e9ecef; /* Цвет фона для readonly состояния */
+                  cursor: not-allowed; /* Курсор, указывающий на то, что элемент недоступен для редактирования */
+                }
+                .invalid {
+                  border: 2px solid red; /* Рамка для обязательных полей, если они не заполнены */
+                }
+              </style>
+<div >
+              <div class="centered">
+                <div class="text">
+                  <img src="https://prosto.education/wp-content/uploads/2023/04/24.png" style="width: 185px; flex-wrap: wrap;" alt="logo">
+                  <h4 class="mt-1 mb-5 pb-1">Х</h4>
+                </div>
+              </div>
+
+              <div class="centered-form">
+                <form action="/submit-order" method="post" class="col s12 m12 offset-m0">
+                  <div id="formError" style="color: red; display: none;">Пожалуйста, заполните все обязательные поля.</div>
+
+                  <label class="form-label" for="form2Example11">Название товара</label>
+                  <input type="text" name="ProductName" class="form-control" placeholder="Название товара" required />
+
+                  <label class="form-label" for="form2Example22">Количество</label>
+                  <input type="number" name="Quantity" class="form-control" placeholder="Количество" required />
+
+                  <label class="form-label" for="form2Example22">URL</label>
+                  <input type="url" name="URL" id="typeURL" placeholder="URL input" class="form-control" required />
+
+                  <label class="form-label" for="form2Example22">Дата поставки</label>
+                  <input type="date" name="StartDate" class="form-control datepicker-input" aria-label="Дата начала" required id="startDateInput" />
+                  <div><span id="dateError" style="color: red; display: none;">Введенная дата некорректна, воспользуйтесь календарем справа от строки ввода.</span></div>
+
+                  <label class="form-label" for="form2Example22">Цена</label>
+                  <input type="number" name="price" class="form-control" placeholder="Цена товара" required />
+
+                  <label class="form-label" for="form2Example22">Автор</label>
+                  <input type="text" name="Author" class="form-control" placeholder="Необязательно" required />
+
+                  <div class="text-center pt-1 mb-5 pb-1">
+                    <button type="submit" id="btn" class="btn btn-primary btn-block fa-lg gradient-custom-2 mb-3 button-container col s12 m12 offset-m0">Сделать заказ</button>
+                   <script>
+                      document.addEventListener('DOMContentLoaded', function() {
+                        // Установите количество дней
+                        const daysFromToday = 3; // Измените это значение на нужное количество дней
+                        // Получаем текущую дату
+                        const today = new Date();
+                        // Устанавливаем минимальную дату как текущая дата плюс X дней
+                        today.setDate(today.getDate() + daysFromToday);
+                        // Преобразуем в формат YYYY-MM-DD
+                        const minDate = today.toISOString().split('T')[0];
+                        // Устанавливаем её как значение атрибута min
+                        const dateInput = document.querySelector('input[name="StartDate"]');
+                        dateInput.setAttribute('min', minDate);
+
+                        // Проверка даты при изменении значения
+                        dateInput.addEventListener('input', function() {
+                          const selectedDate = new Date(this.value);
+                          const minAllowedDate = new Date(minDate);
+
+                          if (selectedDate < minAllowedDate) {
+                            document.getElementById('dateError').style.display = 'inline';
+                            this.setCustomValidity('Введенная дата некорректна, воспользуйтесь календарем справа от строки ввода.');
+                          } else {
+                            document.getElementById('dateError').style.display = 'none';
+                            this.setCustomValidity('');
+                          }
+                        });
+
+                        // Проверка заполнения формы перед отправкой
+                        document.querySelector('form').addEventListener('submit', function(e) {
+                          let isValid = true;
+
+                          // Проверка каждого обязательного поля
+                          this.querySelectorAll('[required]').forEach(function(input) {
+                            if (!input.value.trim()) {
+                              isValid = false;
+                              input.classList.add('invalid'); // Добавляем класс для стиля ошибки
+                            } else {
+                              input.classList.remove('invalid'); // Убираем класс стиля ошибки
+                            }
+                          });
+
+                          if (!isValid) {
+                            e.preventDefault(); // Предотвращаем отправку формы
+                            document.getElementById('formError').style.display = 'inline'; // Показываем сообщение об ошибке
+                          } else {
+                            document.getElementById('formError').style.display = 'none'; // Скрываем сообщение об ошибке
+                          }
+                        });
+                      });
+
+                      $("#btn").click(function(e) {
+                        e.preventDefault();
+                        $.post("/submit-order", $("form").serialize()).done(function(data) {
+                          if (data == "ok") {
+                            M.toast({html: 'Заказ успешно создан', classes: '#26a69a teal lighten-1 rounded'});
+                          }
+                        });
+                      });
+                    </script>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6 d-flex align-items-center gradient-custom-2">
+            <div class="text-black px-3 py-4 p-md-5 mx-md-4"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>

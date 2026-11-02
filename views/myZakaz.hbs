@@ -1,0 +1,84 @@
+<style>
+  .h-100.gradient-form {
+  min-height: calc(100vh - 60px); /* Учитываем высоту хедера */
+  padding-top: 60px; /* Добавляем отступ сверху, равный высоте хедера */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+    .lead a {
+        word-break: break-word;
+        overflow-wrap: break-word;
+    }
+    .gradient-form {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+    }
+
+    .container {
+        display: flex;
+        justify-content: center;
+    }
+</style>
+
+<style>
+  .centered {
+    width: 200px; /* Ширина блока */
+    margin: 0 auto; /* Центрирование по горизонтали */
+    text-align: center; /* Центрирование содержимого внутри блока */
+  }
+</style>
+<style>
+  .centered-form {
+    width: 400px; /* Ширина формы */
+    margin: 0 auto; /* Центрирование по горизонтали */
+  }
+  .button-container {
+    display: flex;
+    flex-direction: column; /* Расположение кнопок в столбец */
+    align-items: center; /* Центрирование кнопок по горизонтали */
+  }
+</style>
+
+<section class="h-100 gradient-form" style="background-color: #ffffff;">
+    <div class="d-flex justify-content-center align-items-center h-100">
+        <div class="col-xl-12">
+            <div class="rounded-3 text-black">
+                <div class="d-flex justify-content-center">
+                    <div class="col-lg-6">
+                        <div class="card-body p-md-5 mx-md-4">
+
+                <div class="centered">
+  <div class="text">
+    <img src="https://prosto.education/wp-content/uploads/2023/04/24.png" style="width: 185px; flex-wrap: wrap;" alt="logo">
+    <h4 class="mt-1 mb-5 pb-1">Х</h4>
+  </div>
+</div>
+
+               <ul id="orderList" style="list-style-type: none;">
+    {{#if orders.length}}
+      {{#each orders}}
+       <li style="margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 10px; width: 100%;">
+    <p class="lead" style="border-bottom: 1px solid #ff9513; padding: 10px;"><strong>Номер заказа:</strong> {{this.OrderID}}</p>
+    <p class="lead" style="border-bottom: 1px solid #ccc; padding: 10px;"><strong>Товар:</strong> {{this.ProductName}}</p>
+    <p class="lead" style="border-bottom: 1px solid #ccc; padding: 10px;"><strong>URL:</strong> <a href="{{this.URL}}">{{this.URL}}</a></p>
+    <p class="lead" style="border-bottom: 1px solid #ccc; padding: 10px;"><strong>Сроки:</strong> с {{dateFormat this.StartDate 'DD MM'}}</p>
+    <p class="lead" style="border-bottom: 1px solid #ccc; padding: 10px;"><strong>Автор:</strong> {{this.Author}}</p>
+    <p class="lead" style="border-bottom: 1px solid #ccc; padding: 10px;"><strong>Статус:</strong> {{this.Status}}</p>
+</li>
+
+      {{/each}}
+    {{else}}
+      <h3 style="text-align: center;">Cделайте свой первый заказ!</h3>
+    {{/if}}
+  </ul>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+</section>

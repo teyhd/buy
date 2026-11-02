@@ -1,13 +1,26 @@
 {{> head}}
-<body>
-{{> navbar}}
 
-    <div class="container">
-        {{{ body }}}
-    </div>
-{{> blocked-order-link}}
+<body>
+
+  {{#if user}}
+    {{#if user.admin}}
+      {{> navbarAdmin}}
+    {{else}}
+      {{> navbarUser}}
+    {{/if}}
+  {{else}}
+    {{> navbar}}
+  {{/if}}
+
+  <div class="container">
+    {{{ body }}}
+  </div>
+
+  {{!-- <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> --}}
+
+
+ {{!-- <script src="/static/toastr/toastr.min.js"></script>
+  <script src="/static/toastr/toastr.js"></script> --}}
+
 </body>
-<script src="/vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
-<script src="/javascript/table-expand-text.js"></script>
-<script type="module" src="/javascript/order-link-guard.js"></script>
 </html>

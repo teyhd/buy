@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Шапка</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+
+.nav-link {
+  padding: 0 15px; /* Добавляем отступы для кнопок */
+}
+
+        /* Стили для фиксированной шапки для ПК */
+        @media(min-width: 992px) {
+            nav {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                z-index: 1000;
+            }
+
+            .nav-wrapper {
+                background-color: #030000;
+                padding: 0 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .brand-logo {
+                font-size: 24px;
+                font-weight: bold;
+                color: #fff;
+                padding: 10px 0;
+            }
+
+            .nav-links {
+                display: flex;
+                list-style: none;
+                margin: 0;
+                padding: 0;
+            }
+
+            .nav-links li {
+                margin-right: 1rem;
+            }
+
+            .user-info {
+                display: flex;
+                align-items: center;
+            }
+
+            .user-info span,
+            .user-info a {
+                margin-left: 0.5rem;
+            }
+
+            /* Убираем сайдбар на ПК */
+            .sidenav {
+                display: none;
+            }
+        }
+
+        /* Стили для мобильной версии */
+        @media(max-width: 991px) {
+            nav {
+                position: relative;
+                background-color: #030000;
+            }
+
+            .brand-logo {
+                display: none;
+            }
+
+            .sidenav-trigger {
+                display: block;
+                padding: 10px;
+                position: absolute; /* Делает позиционирование независимым */
+        top: -10px; /* Расположите на нужной высоте */
+        right: 10px; /* Расположите справа, если необходимо */
+            }
+
+            /* Убираем навигацию на мобильной версии */
+            .nav-links {
+                display: none;
+            }
+
+            .user-info {
+                display: none;
+            }
+
+            .sidenav {
+                display: block;
+            }
+
+            /* Стили для сайдбара */
+            .sidenav {
+                width: 250px;
+                background-color: #a5a5a5;
+                padding: 15px;
+            }
+
+            .sidenav a {
+                color: #fff;
+                text-decoration: none;
+                display: block;
+                padding: 10px 0;
+            }
+
+            .sidenav .brand-logo img {
+                max-height: 50px;
+            }
+
+            .sidenav-trigger {
+            align-items: 0px; /* Выравнивание по вертикали */
+            }
+
+            .sidenav .user-info {
+                margin-bottom: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Шапка -->
+    <nav>
+        <div class="nav-wrapper black">
+
+            <a href="#" data-target="mobile-demo" class="sidenav-trigger"><i class="material-icons">menu</i></a>
+            <ul class="nav-links right hide-on-med-and-down ">
+            <li><a href="#" class="nav-link px-2 text-white">ZAKAZ2</a></li>
+
+
+                <li><a href="/myzakaz" class="nav-link px-2 text-white">Мои заказы</a></li>
+                <li><a href="/newzakaz" class="nav-link px-2 text-white">Добавить заказ</a></li>
+            </ul>
+            <div class="user-info">
+                <span class="btn btn-outline-light ">@{{user.username}}</span>
+                <a href="/logout" class="btn btn-outline-light grey darken-3">Выйти</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Мобильный сайдбар -->
+    <ul class="sidenav" id="mobile-demo">
+        <span class="btn btn-outline-light ">@{{user.username}}</span>
+        <li><a href="/myzakaz" class=" text-white">Мои заказы</a></li>
+        <li><a href="/newzakaz">Добавить заказ</a></li>
+        <li><a href="/logout">Выйти</a></li>
+    </ul>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script>
+        $(document).ready(function(){
+            var sidenav = $('.sidenav').sidenav();
+        });
+    </script>
+</body>
+</html>
