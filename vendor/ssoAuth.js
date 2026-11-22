@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
+import { bindPortalSession, isPortalSessionActive } from './portalSession.mjs';
 
 const DEFAULT_SESSION_TTL = '8h';
 
@@ -122,6 +123,13 @@ export function createSsoAuth({ pool }) {
         AUTH_SESSION_COOKIE_NAME: process.env.AUTH_SESSION_COOKIE_NAME || 'buy.sid',
         AUTH_SESSION_TTL: process.env.AUTH_SESSION_TTL || DEFAULT_SESSION_TTL,
     };
+    const portalCfg = {
+        ssoBaseURL: config.SSO_BASE_URL,
+        clientID: config.SSO_CLIENT_ID,
+        clientSecret: config.SSO_CLIENT_SECRET,
+        sessionSecret: config.AUTH_SESSION_SECRET,
+        requireRevocable: process.env.SSO_REQUIRE_REVOCABLE === '1',
+    };
     const stateCookieName = `${config.AUTH_SESSION_COOKIE_NAME}.state`;
     const ttlMs = parseDuration(config.AUTH_SESSION_TTL);
 
@@ -143,10 +151,11 @@ export function createSsoAuth({ pool }) {
         return url.toString();
     }
 
-    function setSessionCookie(req, res, user) {
+    function setSessionCookie(req, res, user, portal) {
         const payload = {
             exp: Date.now() + ttlMs,
             user,
+            portal,
         };
         res.cookie(config.AUTH_SESSION_COOKIE_NAME, signedValue(payload, config.AUTH_SESSION_SECRET), cookieOptions(req, ttlMs));
     }
@@ -188,20 +197,26 @@ export function createSsoAuth({ pool }) {
         };
     }
 
-    function attachSession(req, _res, next) {
+    async function attachSession(req, res, next) {
         req.session = req.session || {};
-        const rawCookie = req.cookies?.[config.AUTH_SESSION_COOKIE_NAME];
-        if (!rawCookie || !config.AUTH_SESSION_SECRET) {
-            req.session.user = null;
-            req.session.isAuthenticated = false;
-            return next();
-        }
+        req.session.user = null;
+        req.session.isAuthenticated = false;
+        if (/^\/(?:login|logout|api\/(?:cb|auth\/(?:login|logout)))\/?$/i.test(req.path)) return next();
 
+        const rawCookie = req.cookies?.[config.AUTH_SESSION_COOKIE_NAME];
+        if (!rawCookie || !config.AUTH_SESSION_SECRET) return next();
         const payload = readSignedValue(rawCookie, config.AUTH_SESSION_SECRET);
-        if (!payload || !payload.exp || payload.exp < Date.now() || !payload.user) {
-            req.session.user = null;
-            req.session.isAuthenticated = false;
-            return next();
+        if (!payload || !payload.exp || payload.exp < Date.now() || !payload.user) return next();
+
+        try {
+            if (!await isPortalSessionActive(payload.portal, payload.user.sso_id, portalCfg)) {
+                res.clearCookie(config.AUTH_SESSION_COOKIE_NAME, { path: '/' });
+                return next();
+            }
+        } catch {
+            res.set('Cache-Control', 'no-store');
+            if (req.path.startsWith('/api/')) return res.status(503).json({ error: 'portal_session_unavailable' });
+            return res.status(503).send('Проверка школьного входа временно недоступна. Попробуйте позднее.');
         }
 
         req.session.user = payload.user;
@@ -268,7 +283,7 @@ export function createSsoAuth({ pool }) {
             }
 
             const user = buildUser(payload, ssoUser, roleId);
-            setSessionCookie(req, res, user);
+            setSessionCookie(req, res, user, bindPortalSession(token, payload, portalCfg));
             res.clearCookie(stateCookieName, { path: '/' });
 
             return res.redirect(normalizeReturnTo(statePayload.returnTo, user));
