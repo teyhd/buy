@@ -1,3 +1,4 @@
+{{#unless fragment}}
 <div class="page-header">
   {{> notice}}
   <nav aria-label="breadcrumb">
@@ -30,6 +31,7 @@
   </form>
 </div>
 
+{{/unless}}
 {{#if hasRows}}
 <div class="table-responsive">
   <table class="table table-bordered align-middle">
@@ -44,7 +46,7 @@
         <th scope="col">Статус</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody data-list-rows>
       {{#each orders}}
       <tr>
         <td>

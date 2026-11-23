@@ -101,105 +101,112 @@
     }
 
     function initStatusAutosave() {
-        document.querySelectorAll('[data-status-select]').forEach((select) => {
-            select.addEventListener('change', async () => {
-                const previousStatus = select.dataset.originalStatus || '';
-                const nextStatus = select.value;
-                if (nextStatus === previousStatus) return;
+        document.addEventListener('change', async (event) => {
+            const select = event.target.closest('[data-status-select]');
+            if (!select) return;
+            const previousStatus = select.dataset.originalStatus || '';
+            const nextStatus = select.value;
+            if (nextStatus === previousStatus) return;
 
-                select.disabled = true;
-                setInlineState(select, null, 'Сохранение...');
+            select.disabled = true;
+            setInlineState(select, null, 'Сохранение...');
 
-                try {
-                    const response = await fetch(select.dataset.url, {
-                        method: 'POST',
-                        headers: {
-                            Accept: 'application/json',
-                            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        body: requestBody({
-                            status: nextStatus,
-                            return_to: select.dataset.returnTo || window.location.pathname + window.location.search,
-                        }),
-                    });
-                    const data = await safeJson(response);
+            try {
+                const response = await fetch(select.dataset.url, {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: requestBody({
+                        status: nextStatus,
+                        return_to: select.dataset.returnTo || window.location.pathname + window.location.search,
+                    }),
+                });
+                const data = await safeJson(response);
 
-                    if (!response.ok || data.ok === false) {
-                        throw new Error(data.message || GENERIC_ERROR);
-                    }
-
-                    select.dataset.originalStatus = nextStatus;
-                    const message = data.message || 'Статус заказа сохранён.';
-                    setInlineState(select, 'success', data.closed ? 'Сохранено, уйдёт в архив' : 'Сохранено');
-                    showNotice('success', message);
-                } catch (error) {
-                    select.value = previousStatus;
-                    setInlineState(select, 'error', 'Ошибка');
-                    showNotice('error', error.message || GENERIC_ERROR);
-                } finally {
-                    select.disabled = false;
+                if (!response.ok || data.ok !== true) {
+                    throw new Error(data.message || GENERIC_ERROR);
                 }
-            });
+
+                select.dataset.originalStatus = nextStatus;
+                const message = data.message || 'Статус заказа сохранён.';
+                const statusFilter = select.closest('[data-status-filter]').dataset.statusFilter;
+                if (data.closed || (statusFilter && nextStatus !== statusFilter)) {
+                    const url = new URL(select.dataset.returnTo, window.location.href);
+                    url.searchParams.set('updated', message);
+                    window.location.replace(url);
+                    return;
+                }
+                setInlineState(select, 'success', 'Сохранено');
+                showNotice('success', message);
+            } catch (error) {
+                select.value = previousStatus;
+                setInlineState(select, 'error', 'Ошибка');
+                showNotice('error', error.message || GENERIC_ERROR);
+            } finally {
+                select.disabled = false;
+            }
         });
     }
 
     function initEditModals() {
-        document.querySelectorAll('.js-admin-edit-form').forEach((form) => {
-            form.addEventListener('submit', async (event) => {
-                event.preventDefault();
-                clearModalErrors(form);
+        document.addEventListener('submit', async (event) => {
+            const form = event.target.closest('.js-admin-edit-form');
+            if (!form) return;
+            event.preventDefault();
+            clearModalErrors(form);
 
-                const submitButton = form.querySelector('[data-submit-button]');
+            const submitButton = form.querySelector('[data-submit-button]');
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.dataset.originalText = submitButton.textContent;
+                submitButton.textContent = 'Сохранение...';
+            }
+
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: new URLSearchParams(new FormData(form)),
+                });
+                const data = await safeJson(response);
+
+                if (response.status === 422) {
+                    showModalError(form, data.message || 'Проверьте поля формы.');
+                    applyFieldErrors(form, data.fieldErrors || {});
+                    form.dispatchEvent(new CustomEvent('order-link-rejected', { bubbles: true, detail: data }));
+                    return;
+                }
+
+                if (!response.ok || data.ok === false) {
+                    throw new Error(data.message || GENERIC_ERROR);
+                }
+
+                if (data.order) {
+                    updateOrderRow(data.order);
+                    form.elements.link.dataset.originalLink = data.order.link;
+                }
+
+                const modalElement = form.closest('.modal');
+                if (modalElement && window.bootstrap) {
+                    window.bootstrap.Modal.getOrCreateInstance(modalElement).hide();
+                }
+                showNotice('success', data.message || 'Данные заказа сохранены.');
+            } catch (error) {
+                showModalError(form, error.message || GENERIC_ERROR);
+                showNotice('error', error.message || GENERIC_ERROR);
+            } finally {
                 if (submitButton) {
-                    submitButton.disabled = true;
-                    submitButton.dataset.originalText = submitButton.textContent;
-                    submitButton.textContent = 'Сохранение...';
+                    submitButton.disabled = false;
+                    submitButton.textContent = submitButton.dataset.originalText || 'Сохранить';
                 }
-
-                try {
-                    const response = await fetch(form.action, {
-                        method: 'POST',
-                        headers: {
-                            Accept: 'application/json',
-                            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        body: new URLSearchParams(new FormData(form)),
-                    });
-                    const data = await safeJson(response);
-
-                    if (response.status === 422) {
-                        showModalError(form, data.message || 'Проверьте поля формы.');
-                        applyFieldErrors(form, data.fieldErrors || {});
-                        form.dispatchEvent(new CustomEvent('order-link-rejected', { bubbles: true, detail: data }));
-                        return;
-                    }
-
-                    if (!response.ok || data.ok === false) {
-                        throw new Error(data.message || GENERIC_ERROR);
-                    }
-
-                    if (data.order) {
-                        updateOrderRow(data.order);
-                        form.elements.link.dataset.originalLink = data.order.link;
-                    }
-
-                    const modalElement = form.closest('.modal');
-                    if (modalElement && window.bootstrap) {
-                        window.bootstrap.Modal.getOrCreateInstance(modalElement).hide();
-                    }
-                    showNotice('success', data.message || 'Данные заказа сохранены.');
-                } catch (error) {
-                    showModalError(form, error.message || GENERIC_ERROR);
-                    showNotice('error', error.message || GENERIC_ERROR);
-                } finally {
-                    if (submitButton) {
-                        submitButton.disabled = false;
-                        submitButton.textContent = submitButton.dataset.originalText || 'Сохранить';
-                    }
-                }
-            });
+            }
         });
     }
 
