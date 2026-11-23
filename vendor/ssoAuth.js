@@ -32,13 +32,12 @@ function signedValue(payload, secret) {
 }
 
 function readSignedValue(value, secret) {
-    if (!value || !value.includes('.')) return null;
+    if (typeof value !== 'string' || !value.includes('.')) return null;
 
     const [encoded, signature] = value.split('.', 2);
-    const expected = sign(encoded, secret);
-    if (signature.length !== expected.length) return null;
-    const valid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
-    if (!valid) return null;
+    const actual = Buffer.from(signature);
+    const expected = Buffer.from(sign(encoded, secret));
+    if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return null;
 
     try {
         return JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
