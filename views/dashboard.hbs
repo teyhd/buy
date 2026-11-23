@@ -1,3 +1,4 @@
+{{#unless fragment}}
 <div class="page-header">
   {{> notice}}
   <div class="d-flex flex-column flex-md-row justify-content-between gap-3 align-items-md-center">
@@ -19,6 +20,7 @@
   </form>
 </div>
 
+{{/unless}}
 {{#if hasRows}}
 <div class="table-responsive">
   <table class="table table-bordered align-middle">
@@ -32,7 +34,7 @@
         <th scope="col" class="text-end">Действия</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody data-list-rows>
       {{#each rows}}
       <tr>
         <td>{{> expandable-text text=this.owner_label}}</td>
@@ -58,6 +60,7 @@
 
 {{> pagination}}
 
+{{#unless fragment}}
 <div id="snackbar">{{alert}}</div>
 <script src="/javascript/snackbar.js"></script>
 <script>
@@ -69,3 +72,4 @@
     snackBAR(message);
   }
 </script>
+{{/unless}}

@@ -1,13 +1,18 @@
-{{#if (hasPages pages)}}
-<nav class="pagination center" aria-label="Навигация по страницам">
-  {{#if prevUrl}}
-    <a href="{{prevUrl}}" aria-label="Предыдущая страница">«</a>
+<div data-list-pagination>
+  {{#if (or prevUrl nextUrl)}}
+    <nav class="d-flex justify-content-center gap-2 mb-3" aria-label="Навигация по списку">
+      {{#if prevUrl}}
+        <a class="btn btn-outline-secondary" href="{{prevUrl}}">Предыдущая страница</a>
+      {{/if}}
+      {{#if nextUrl}}
+        <a class="btn btn-outline-secondary" href="{{nextUrl}}" data-list-more data-next-url="{{nextBatchUrl}}">Загрузить ещё</a>
+      {{/if}}
+    </nav>
+    <span class="visually-hidden" role="status" data-list-status></span>
   {{/if}}
-  {{#each pages}}
-    <a class="{{#if isCurrent}}active{{/if}}" href="{{url}}">{{number}}</a>
-  {{/each}}
+</div>
+{{#unless fragment}}
   {{#if nextUrl}}
-    <a href="{{nextUrl}}" aria-label="Следующая страница">»</a>
+    <script type="module" src="/javascript/list-pagination.js"></script>
   {{/if}}
-</nav>
-{{/if}}
+{{/unless}}

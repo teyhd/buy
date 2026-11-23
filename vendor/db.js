@@ -287,25 +287,77 @@ function buildUrl(basePath, query, page) {
     return qs ? `${basePath}?${qs}` : basePath;
 }
 
-function pagination(basePath, page, total, limit, query = {}) {
-    const totalPages = Math.ceil(Number(total || 0) / limit);
-    const safePage = totalPages > 0 ? Math.min(page, totalPages) : 1;
-    const pages = Array.from({ length: totalPages }, (_, i) => {
-        const number = i + 1;
-        return {
-            number,
-            isCurrent: number === safePage,
-            url: buildUrl(basePath, query, number),
-        };
-    });
+const LIST_PAGE_SIZE = 10;
+const CUSTOMER_ORDER = `${searchTextSql("COALESCE(owner_label, '')")}, owner_type, COALESCE(owner_ref, 0)`;
+
+function listCursor(value, customers) {
+    if (typeof value !== 'string') return null;
+    if (!customers) return /^\d{1,20}$/.test(value) ? [value] : null;
+    try {
+        const cursor = JSON.parse(value);
+        if (Array.isArray(cursor) && cursor.length === 3 && typeof cursor[0] === 'string'
+                && ['legacy', 'sso'].includes(cursor[1]) && /^\d{1,20}$/.test(cursor[2])) {
+            return cursor;
+        }
+    } catch {
+        return null;
+    }
+    return null;
+}
+
+async function loadListPage(connection, req, {
+    basePath, query, selectSql, params, summarySql, summaryParams = params, customers = false,
+}) {
+    const cursor = listCursor(req.query.after, customers);
+    const fragment = Boolean(cursor);
+    const [summaries] = fragment ? [[]] : await connection.query(summarySql, summaryParams);
+    const summary = summaries[0] || {};
+    const total = Number(summary.total || 0);
+    const requestedPage = normalizePage(req.query.page);
+    const lastPage = Math.max(1, Math.ceil(total / LIST_PAGE_SIZE));
+    let page = fragment ? requestedPage : Math.min(requestedPage, lastPage);
+    const orderBy = customers ? CUSTOMER_ORDER : 'orders.id DESC';
+    // The cursor keeps the next batch anchored when rows above it are removed or added.
+    const afterSql = customers
+        ? `HAVING (${CUSTOMER_ORDER}) > (?, ?, CAST(? AS UNSIGNED))`
+        : 'AND orders.id < CAST(? AS UNSIGNED)';
+    const pageSql = `${selectSql} ${fragment ? afterSql : ''} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+    const pageParams = [...params, ...(cursor || []), LIST_PAGE_SIZE + 1];
+    const offset = fragment ? 0 : (page - 1) * LIST_PAGE_SIZE;
+    let [results] = await connection.query(pageSql, [...pageParams, offset]);
+    // Rows can still disappear between COUNT and SELECT on a numbered fallback page.
+    if (offset > 0 && results.length === 0) {
+        page = 1;
+        [results] = await connection.query(pageSql, [...pageParams, 0]);
+    }
+    const rows = results.slice(0, LIST_PAGE_SIZE);
+    const hasMore = results.length > LIST_PAGE_SIZE;
+    const last = rows.at(-1);
+    const nextCursor = hasMore && (customers
+        ? JSON.stringify([last.owner_label ?? '', last.owner_type, String(last.owner_ref ?? 0)])
+        : String(last.id));
 
     return {
-        page: safePage,
-        totalPages,
-        prevUrl: safePage > 1 ? buildUrl(basePath, query, safePage - 1) : null,
-        nextUrl: safePage < totalPages ? buildUrl(basePath, query, safePage + 1) : null,
-        pages,
+        rows,
+        fragment,
+        hasRows: rows.length > 0,
+        total,
+        summary,
+        currentUrl: buildUrl(basePath, query, fragment ? 1 : page),
+        prevUrl: !fragment && page > 1 ? buildUrl(basePath, query, page - 1) : null,
+        nextUrl: hasMore ? buildUrl(basePath, query, page + 1) : null,
+        nextBatchUrl: hasMore ? buildUrl(basePath, { ...query, after: nextCursor }, page + 1) : null,
     };
+}
+
+function renderList(res, req, view, data, details) {
+    res.render(view, {
+        ...data,
+        ...details,
+        ...(data.fragment ? { layout: false } : {}),
+        isAuthenticated: req.session.isAuthenticated,
+        user: req.session.user,
+    });
 }
 
 function localReturnTo(value, fallback) {
@@ -916,9 +968,6 @@ function renderError(res, req, status, heading, message) {
 
 async function loadMyOrdersPage(connection, req) {
     const ssoUserId = getSsoUserId(req);
-    const page = normalizePage(req.query.page);
-    const limit = 10;
-    const offset = (page - 1) * limit;
     const q = normalizeText(req.query.q || req.query.search);
     const status = isValidStatus(req.query.status) ? req.query.status : '';
 
@@ -934,17 +983,17 @@ async function loadMyOrdersPage(connection, req) {
     }
 
     const whereSql = `WHERE ${where.join(' AND ')}`;
-    const [rows] = await connection.query(
-        `SELECT ${ORDER_OWNER_SELECT}
+    const pageData = await loadListPage(connection, req, {
+        basePath: '/myorders',
+        query: { q, status },
+        selectSql: `SELECT ${ORDER_OWNER_SELECT}
          FROM orders
          ${ORDER_OWNER_JOINS}
-         ${whereSql}
-         ORDER BY orders.id DESC
-         LIMIT ? OFFSET ?`,
-        [...params, limit, offset]
-    );
-    const [totalRows] = await connection.query(`SELECT COUNT(*) AS total FROM orders ${whereSql}`, params);
-    const [summaryRows] = await connection.query(
+         ${whereSql}`,
+        params,
+        summarySql: `SELECT COUNT(*) AS total FROM orders ${whereSql}`,
+    });
+    const [summaryRows] = pageData.fragment ? [[]] : await connection.query(
         `SELECT
             COUNT(*) AS total_count,
             SUM(CASE WHEN status NOT IN (?, ?) THEN 1 ELSE 0 END) AS active_count,
@@ -953,13 +1002,11 @@ async function loadMyOrdersPage(connection, req) {
          WHERE sso_author_id = ?`,
         [...CLOSED_STATUSES, ...CLOSED_STATUSES, ssoUserId]
     );
-    const total = Number(totalRows[0]?.total || 0);
     const summary = summaryRows[0] || {};
 
     return {
-        rows: rows.map(attachOrderUi),
-        hasRows: rows.length > 0,
-        total,
+        ...pageData,
+        rows: pageData.rows.map(attachOrderUi),
         summary: {
             total_count: Number(summary.total_count || 0),
             active_count: Number(summary.active_count || 0),
@@ -968,18 +1015,14 @@ async function loadMyOrdersPage(connection, req) {
         filters: { q, status },
         hasFilters: Boolean(q || status),
         statusOptions: statusOptions(status),
-        ...pagination('/myorders', page, total, limit, { q, status }),
     };
 }
 
 function renderMyOrders(res, req, pageData, alert = null) {
     const flash = alert || req.query.created || req.query.updated || req.query.cancelled || req.query.error || null;
-    res.render('myorders', {
+    renderList(res, req, 'myorders', pageData, {
         title: 'Мои заказы',
-        ...pageData,
         alert: flash,
-        isAuthenticated: req.session.isAuthenticated,
-        user: req.session.user,
     });
 }
 
@@ -988,9 +1031,6 @@ export const view = async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
-        const page = normalizePage(req.query.page);
-        const limit = 10;
-        const offset = (page - 1) * limit;
         const q = normalizeText(req.query.q || req.query.search);
         const whereSql = q ? `WHERE ${OWNER_LABEL_SEARCH_SQL} LIKE ?` : '';
         const searchParams = q ? [`%${q}%`] : [];
@@ -1008,35 +1048,28 @@ export const view = async (req, res) => {
             ${whereSql}
             GROUP BY owner_type, owner_ref, owner_label`;
 
-        const [rows] = await connection.query(
-            `${groupedSelect}
-             ORDER BY owner_label ASC
-             LIMIT ? OFFSET ?`,
-            [...CLOSED_STATUSES, ...CLOSED_STATUSES, ...searchParams, limit, offset]
-        );
-        const [totalRows] = await connection.query(
-            `SELECT COUNT(*) AS total FROM (
+        const pageData = await loadListPage(connection, req, {
+            basePath: '/dashboard',
+            query: { q },
+            selectSql: groupedSelect,
+            params: [...CLOSED_STATUSES, ...CLOSED_STATUSES, ...searchParams],
+            summarySql: `SELECT COUNT(*) AS total FROM (
                 SELECT ${OWNER_TYPE_SQL} AS owner_type, ${OWNER_REF_SQL} AS owner_ref
                 FROM orders
                 ${ORDER_OWNER_JOINS}
                 ${whereSql}
                 GROUP BY owner_type, owner_ref
             ) customers`,
-            searchParams
-        );
-        const total = Number(totalRows[0]?.total || 0);
+            summaryParams: searchParams,
+            customers: true,
+        });
 
-        res.render('dashboard', {
+        renderList(res, req, 'dashboard', pageData, {
             title: 'Заказчики',
-            rows: rows.map(attachCustomerUi),
-            hasRows: rows.length > 0,
-            total,
+            rows: pageData.rows.map(attachCustomerUi),
             filters: { q },
             hasFilters: Boolean(q),
             alert: req.query.error || req.query.updated || null,
-            ...pagination('/dashboard', page, total, limit, { q }),
-            isAuthenticated: req.session.isAuthenticated,
-            user: req.session.user,
         });
     } catch (err) {
         console.log(err);
@@ -1056,9 +1089,6 @@ export const vieworder = async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
-        const page = normalizePage(req.query.page);
-        const limit = 10;
-        const offset = (page - 1) * limit;
         const source = req.params.source === 'sso' ? 'sso' : 'legacy';
         const ownerId = normalizeId(req.params.id);
         if (!ownerId) {
@@ -1093,28 +1123,21 @@ export const vieworder = async (req, res) => {
         }
 
         const filter = buildOwnerScopeFilter(ownerColumn, ownerId, scope);
-        const [totalRows] = await connection.query(
-            `SELECT COUNT(*) AS total FROM orders ${filter.whereSql}`,
-            filter.params
-        );
-        const total = Number(totalRows[0]?.total || 0);
-        const [orderRows] = await connection.query(
-            `SELECT * FROM orders ${filter.whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`,
-            [...filter.params, limit, offset]
-        );
+        const pageData = await loadListPage(connection, req, {
+            basePath: `/dashboard/vieworder/${source}/${ownerId}`,
+            query: { scope },
+            selectSql: `SELECT * FROM orders ${filter.whereSql}`,
+            params: filter.params,
+            summarySql: `SELECT COUNT(*) AS total FROM orders ${filter.whereSql}`,
+        });
 
-        res.render('view-order', {
+        renderList(res, req, 'view-order', pageData, {
             title: 'История заказчика',
             viewedUser,
-            orders: orderRows.map(attachOrderUi),
-            hasRows: orderRows.length > 0,
+            orders: pageData.rows.map(attachOrderUi),
             ownerSource: source,
             scope,
             scopeOptions: scopeOptions(scope),
-            total,
-            ...pagination(`/dashboard/vieworder/${source}/${ownerId}`, page, total, limit, { scope }),
-            isAuthenticated: req.session.isAuthenticated,
-            user: req.session.user,
         });
     } catch (err) {
         console.log(err);
@@ -1248,7 +1271,7 @@ export const updateOrderStatus = async (req, res) => {
         await connection.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
 
         const message = isClosedStatus(status)
-            ? 'Статус сохранён. Заказ уйдёт в архив после обновления списка.'
+            ? 'Заказ перенесён в архив.'
             : 'Статус заказа сохранён.';
         return jsonOrRedirect(req, res, 200, redirectTo, 'updated', message, {
             status,
@@ -1290,45 +1313,32 @@ export const viewarchive = async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
-        const page = normalizePage(req.query.page);
-        const limit = 10;
-        const offset = (page - 1) * limit;
         const q = normalizeText(req.query.q || req.query.search);
         const status = isClosedStatus(req.query.status) ? req.query.status : '';
         const filter = buildOrderFilter({ scope: 'closed', status, q });
 
-        const [orderRows] = await connection.query(
-            `SELECT ${ORDER_OWNER_SELECT}
-             FROM orders
-             ${ORDER_OWNER_JOINS}
-             ${filter.whereSql}
-             ORDER BY orders.id DESC
-             LIMIT ? OFFSET ?`,
-            [...filter.params, limit, offset]
-        );
-        const [summaryRows] = await connection.query(
-            `SELECT COUNT(*) AS total, COALESCE(SUM(orders.price), 0) AS price_count
+        const pageData = await loadListPage(connection, req, {
+            basePath: '/ordersarchive',
+            query: { q, status },
+            selectSql: `SELECT ${ORDER_OWNER_SELECT}
              FROM orders
              ${ORDER_OWNER_JOINS}
              ${filter.whereSql}`,
-            filter.params
-        );
-        const total = Number(summaryRows[0]?.total || 0);
+            params: filter.params,
+            summarySql: `SELECT COUNT(*) AS total, COALESCE(SUM(orders.price), 0) AS price_count
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}`,
+        });
 
-        res.render('orders-archive', {
+        renderList(res, req, 'orders-archive', pageData, {
             title: 'Архив заказов',
-            orders: orderRows.map(attachOrderUi),
-            hasRows: orderRows.length > 0,
-            total,
-            price_count: formatMoney(summaryRows[0]?.price_count),
+            orders: pageData.rows.map(attachOrderUi),
+            price_count: formatMoney(pageData.summary.price_count),
             filters: { q, status },
             hasFilters: Boolean(q || status),
             statusOptions: statusOptions(status, CLOSED_STATUSES),
-            currentUrl: buildUrl('/ordersarchive', { q, status }, page),
             alert: req.query.removed || req.query.error || null,
-            ...pagination('/ordersarchive', page, total, limit, { q, status }),
-            isAuthenticated: req.session.isAuthenticated,
-            user: req.session.user,
         });
     } catch (err) {
         console.log(err);
@@ -1343,45 +1353,32 @@ export const manageOrders = async (req, res) => {
     let connection;
     try {
         connection = await pool.getConnection();
-        const page = normalizePage(req.query.page);
-        const limit = 10;
-        const offset = (page - 1) * limit;
         const q = normalizeText(req.query.q || req.query.search);
         const status = isActiveStatus(req.query.status) ? req.query.status : '';
         const filter = buildOrderFilter({ scope: 'active', status, q });
 
-        const [orderRows] = await connection.query(
-            `SELECT ${ORDER_OWNER_SELECT}
-             FROM orders
-             ${ORDER_OWNER_JOINS}
-             ${filter.whereSql}
-             ORDER BY orders.id DESC
-             LIMIT ? OFFSET ?`,
-            [...filter.params, limit, offset]
-        );
-        const [summaryRows] = await connection.query(
-            `SELECT COUNT(*) AS total, COALESCE(SUM(orders.price), 0) AS price_count
+        const pageData = await loadListPage(connection, req, {
+            basePath: '/manageorders',
+            query: { q, status },
+            selectSql: `SELECT ${ORDER_OWNER_SELECT}
              FROM orders
              ${ORDER_OWNER_JOINS}
              ${filter.whereSql}`,
-            filter.params
-        );
-        const total = Number(summaryRows[0]?.total || 0);
+            params: filter.params,
+            summarySql: `SELECT COUNT(*) AS total, COALESCE(SUM(orders.price), 0) AS price_count
+             FROM orders
+             ${ORDER_OWNER_JOINS}
+             ${filter.whereSql}`,
+        });
 
-        res.render('manage-orders', {
+        renderList(res, req, 'manage-orders', pageData, {
             title: 'Активные заказы',
-            orders: orderRows.map(attachOrderUi),
-            hasRows: orderRows.length > 0,
-            total,
-            price_count: formatMoney(summaryRows[0]?.price_count),
+            orders: pageData.rows.map(attachOrderUi),
+            price_count: formatMoney(pageData.summary.price_count),
             filters: { q, status },
             hasFilters: Boolean(q || status),
             statusOptions: statusOptions(status, ACTIVE_STATUSES),
-            currentUrl: buildUrl('/manageorders', { q, status }, page),
             alert: req.query.created || req.query.updated || req.query.removed || req.query.error || null,
-            ...pagination('/manageorders', page, total, limit, { q, status }),
-            isAuthenticated: req.session.isAuthenticated,
-            user: req.session.user,
         });
     } catch (err) {
         console.log(err);

@@ -1,3 +1,4 @@
+{{#unless fragment}}
 <div class="page-header">
   {{> notice}}
   <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
@@ -33,10 +34,11 @@
 </div>
 
 <div class="alert manage-orders-alert d-none" data-manage-alert role="alert"></div>
+{{/unless}}
 
 {{#if hasRows}}
 <div class="table-responsive">
-  <table class="table table-bordered align-middle manage-orders-table">
+  <table class="table table-bordered align-middle manage-orders-table" data-status-filter="{{filters.status}}">
     <thead class="table-dark">
       <tr>
         <th scope="col">Автор</th>
@@ -50,7 +52,7 @@
         <th scope="col" class="text-end">Действия</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody data-list-rows>
       {{#each orders}}
       <tr data-order-row="{{this.id}}">
         <td>
@@ -101,6 +103,7 @@
   </table>
 </div>
 
+<div data-list-modals>
 {{#each orders}}
 <div class="modal fade" id="edit-order-{{this.id}}" tabindex="-1" aria-labelledby="edit-order-{{this.id}}-title" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -140,6 +143,7 @@
   </div>
 </div>
 {{/each}}
+</div>
 {{else}}
   {{#if hasFilters}}
     {{> empty-state title="Ничего не найдено" text="Измените поиск или сбросьте фильтры."}}
@@ -150,6 +154,7 @@
 
 {{> pagination}}
 
+{{#unless fragment}}
 <div id="snackbar">{{alert}}</div>
 <script src="/javascript/snackbar.js"></script>
 <script>
@@ -161,3 +166,4 @@
   }
 </script>
 <script src="/javascript/manage-orders.js"></script>
+{{/unless}}

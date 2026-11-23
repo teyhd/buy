@@ -1,5 +1,5 @@
-document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('.js-table-expand-text').forEach(function (element) {
+export function initTableExpandText(root) {
+    root.querySelectorAll('.js-table-expand-text').forEach(function (element) {
         var isOverflowing = element.scrollHeight > element.clientHeight + 1 || element.scrollWidth > element.clientWidth + 1;
         if (!isOverflowing) {
             element.removeAttribute('role');
@@ -25,4 +25,6 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     });
-});
+}
+
+initTableExpandText(document);

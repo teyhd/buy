@@ -70,8 +70,8 @@ const hbs = exphbs.create({
             const year = date.getFullYear();
             return `${year}-${month}-${day}`;
         },
-        hasPages: function (pages) {
-            return Array.isArray(pages) && pages.length > 1;
+        or: function (first, second) {
+            return first || second;
         },
         
     },
