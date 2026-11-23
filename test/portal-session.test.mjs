@@ -6,6 +6,27 @@ import express from 'express';
 
 import { createSsoAuth } from '../vendor/ssoAuth.js';
 
+test('attachSession ignores a cookie with a multi-byte signature', async t => {
+  const env = { AUTH_SESSION_SECRET: 'fixture-session-secret', AUTH_SESSION_COOKIE_NAME: 'buy.sid' };
+  const previous = Object.fromEntries(Object.keys(env).map(name => [name, process.env[name]]));
+  Object.assign(process.env, env);
+  t.after(() => Object.entries(previous).forEach(([name, value]) => value === undefined ? delete process.env[name] : process.env[name] = value));
+
+  const signature = '\u00e9'.repeat(43);
+  const req = { path: '/api/me', headers: { cookie: 'buy.sid=e30.' + encodeURIComponent(signature) } };
+  const res = {};
+  cookieParser()(req, res, () => {});
+  assert.equal(req.cookies['buy.sid'], 'e30.' + signature);
+
+  const auth = createSsoAuth({ pool: null });
+  const next = t.mock.fn();
+  await auth.attachSession(req, res, next);
+
+  assert.equal(next.mock.callCount(), 1);
+  assert.deepEqual(next.mock.calls[0].arguments, []);
+  assert.deepEqual(req.session, { user: null, isAuthenticated: false });
+});
+
 test('portal-issued session remains bound to its active device after OAuth callback', async t => {
   const clientID = 'buy';
   const audience = '12';
