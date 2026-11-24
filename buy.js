@@ -18,7 +18,8 @@ import { config } from 'dotenv';
 import { resolve } from 'path';
 config({ path: resolve(__dirname, '.env') });
 
-import {view,find,viewarchive,vieworder,myorders,findOrders,manageOrders,orderAnalytics,orderAnalyticsCsv,updateOrderAccounting,updateOrderStatus,formOrder,formOrderForUser,createOrder,createOrderForUser,editOrder,updateOrder,editOrderAdmin,updateOrderAdmin,deleteOrder,cancelOrder} from './vendor/db.js'
+import { mainportalOrders } from './vendor/mainportalOrders.js';
+import { ORDER_STATUS,view,find,viewarchive,vieworder,myorders,findOrders,manageOrders,orderAnalytics,orderAnalyticsCsv,updateOrderAccounting,updateOrderStatus,formOrder,formOrderForUser,createOrder,createOrderForUser,editOrder,updateOrder,editOrderAdmin,updateOrderAdmin,deleteOrder,cancelOrder} from './vendor/db.js'
 import { createSsoAuth } from './vendor/ssoAuth.js'
 import { startOrderNotificationDispatcher } from './vendor/orderNotifications.js'
 import { normalizeOrderLink } from './public/javascript/order-link-policy.js';
@@ -26,6 +27,20 @@ import { normalizeOrderLink } from './public/javascript/order-link-policy.js';
 const app = express();
 app.set('trust proxy', 1);
 const port = process.env.PORT || 5000;
+
+//connection pool
+export const pool = mysql.createPool({
+    connectionLimit : 100,
+    host            : process.env.host,
+    port            : Number(process.env.DB_PORT) || 3407,
+    user            : process.env.user,
+    password        : process.env.password,
+    database        : process.env.database
+});
+
+app.post('/internal/v1/mainportal/orders', bodyParser.raw({ type: 'application/json', limit: '2kb' }),
+    mainportalOrders({ pool, getKey: () => process.env.MAINPORTAL_ORDERS_KEY,
+        serviceId: Number(process.env.SSO_SERVICE_ID || 12), statuses: ORDER_STATUS }));
 
 // parsing middleware
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -87,16 +102,6 @@ hbs.handlebars.registerHelper('ifeq', function(a, b, options) {
 app.engine('hbs', hbs.engine);
 app.set('view engine', 'hbs');
 app.set('views','views');
-
-//connection pool
-export const pool = mysql.createPool({
-    connectionLimit : 100,
-    host            : process.env.host,
-    port            : Number(process.env.DB_PORT) || 3407,
-    user            : process.env.user,
-    password        : process.env.password,
-    database        : process.env.database
-});
 
 const ssoAuth = createSsoAuth({ pool });
 app.use(ssoAuth.attachSession);
