@@ -40,7 +40,8 @@ CREATE TABLE `orders` (
   `created_by_sso_id` int(11) DEFAULT NULL,
   `created_mode` enum('self','admin_on_behalf') NOT NULL DEFAULT 'self',
   `status` enum('На рассмотрении','Закупаем','Доставляем','Ожидает получения','Получен','Отменен') DEFAULT NULL,
-  `price` decimal(10,2) DEFAULT NULL
+  `price` decimal(10,2) DEFAULT NULL,
+  `received_at` datetime(3) DEFAULT NULL COMMENT 'UTC receipt time'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
