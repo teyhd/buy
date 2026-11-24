@@ -1268,7 +1268,17 @@ export const updateOrderStatus = async (req, res) => {
         if (existingRows.length === 0) {
             return jsonOrRedirect(req, res, 404, redirectTo, 'error', 'Заказ не найден или был удалён.');
         }
-        await connection.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
+        await connection.query(
+            `UPDATE orders
+             SET received_at = CASE
+                 WHEN ? <> ? THEN NULL
+                 WHEN status = ? THEN received_at
+                 ELSE UTC_TIMESTAMP(3)
+             END,
+             status = ?
+             WHERE id = ?`,
+            [status, ORDER_STATUS.RECEIVED, ORDER_STATUS.RECEIVED, status, orderId]
+        );
 
         const message = isClosedStatus(status)
             ? 'Заказ перенесён в архив.'
