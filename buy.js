@@ -21,6 +21,7 @@ config({ path: resolve(__dirname, '.env') });
 import { mainportalOrders } from './vendor/mainportalOrders.js';
 import { ORDER_STATUS,view,find,viewarchive,vieworder,myorders,findOrders,manageOrders,orderAnalytics,orderAnalyticsCsv,updateOrderAccounting,updateOrderStatus,formOrder,formOrderForUser,createOrder,createOrderForUser,editOrder,updateOrder,editOrderAdmin,updateOrderAdmin,deleteOrder,cancelOrder} from './vendor/db.js'
 import { createSsoAuth } from './vendor/ssoAuth.js'
+import { registerPortalRolePreview } from './vendor/rolePreview.mjs';
 import { startOrderNotificationDispatcher } from './vendor/orderNotifications.js'
 import { normalizeOrderLink } from './public/javascript/order-link-policy.js';
 
@@ -104,7 +105,25 @@ app.set('view engine', 'hbs');
 app.set('views','views');
 
 const ssoAuth = createSsoAuth({ pool });
-app.use(ssoAuth.attachSession);
+registerPortalRolePreview(app, {
+    service: 'buy',
+    secret: process.env.SSO_CLIENT_SECRET,
+    origin: 'https://buy.platoniks.ru',
+    async project(profile) {
+        const account = await ssoAuth.previewUser(profile);
+        return account && { name: profile.name, account };
+    },
+    entry: preview => ssoAuth.landingFor(preview.account),
+    allowRead: route => ['/', '/api/me', '/myorders', '/myorders/addorder'].includes(route)
+        || /^\/myorders\/editorder\/\d+$/.test(route),
+    assets: ['/javascript/'],
+    audit: ({ actorId, subjectId }) => mlog('role_preview_open actor=' + actorId + ' subject=' + subjectId),
+});
+app.use((req, res, next) => {
+    if (!req.rolePreview) return ssoAuth.attachSession(req, res, next);
+    req.session = { user: req.rolePreview.account, isAuthenticated: true };
+    return next();
+});
 
 //connect to db
 async function checkDbConnection() {

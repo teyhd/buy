@@ -313,6 +313,13 @@ export function createSsoAuth({ pool }) {
 
     return {
         attachSession,
+        async previewUser(profile) {
+            const role = Math.max(...profile.roles);
+            if (!(role > 0) || role === 5 || role === 7) return null;
+            const user = await fetchSsoUser(profile.id);
+            if (Number(user?.status) !== 1 || [-1, 5, 7].includes(Number(user.type))) return null;
+            return buildUser({ sub: profile.id, name: profile.name }, user, role);
+        },
         login,
         callback,
         logout,
