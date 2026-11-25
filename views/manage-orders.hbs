@@ -73,6 +73,7 @@
         <td>
           <form action="/manageorders/{{this.id}}/status" method="POST" class="status-form" data-status-control>
             <input type="hidden" name="return_to" value="{{../currentUrl}}">
+            <input type="hidden" name="previous_status" value="{{this.status}}">
             <select
               class="form-select form-select-sm"
               name="status"

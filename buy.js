@@ -22,6 +22,7 @@ import { mainportalOrders } from './vendor/mainportalOrders.js';
 import { ORDER_STATUS,view,find,viewarchive,vieworder,myorders,findOrders,manageOrders,orderAnalytics,orderAnalyticsCsv,updateOrderAccounting,updateOrderStatus,formOrder,formOrderForUser,createOrder,createOrderForUser,editOrder,updateOrder,editOrderAdmin,updateOrderAdmin,deleteOrder,cancelOrder} from './vendor/db.js'
 import { createSsoAuth } from './vendor/ssoAuth.js'
 import { registerPortalRolePreview } from './vendor/rolePreview.mjs';
+import { dateDisplayValue, dateInputValue, isCalendarDate, moscowCalendarDate } from './vendor/orderDates.js';
 import { startOrderNotificationDispatcher } from './vendor/orderNotifications.js'
 import { normalizeOrderLink } from './public/javascript/order-link-policy.js';
 
@@ -60,32 +61,8 @@ const hbs = exphbs.create({
         eq: function (v1, v2) {
             return v1 === v2;
         },
-        formatDate: function (dateString) {
-            if (!dateString) {
-                return ''; 
-            }
-            const date = new Date(dateString);
-            if (Number.isNaN(date.getTime())) {
-                return '';
-            }
-            const day = String(date.getDate()).padStart(2, '0');
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const year = date.getFullYear();
-            return `${day}.${month}.${year}`;
-        },
-        formatDateInput: function (dateString) {
-            if (!dateString) {
-                return '';
-            }
-            const date = new Date(dateString);
-            if (Number.isNaN(date.getTime())) {
-                return '';
-            }
-            const day = String(date.getDate()).padStart(2, '0');
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const year = date.getFullYear();
-            return `${year}-${month}-${day}`;
-        },
+        formatDate: dateDisplayValue,
+        formatDateInput: dateInputValue,
         or: function (first, second) {
             return first || second;
         },
@@ -219,22 +196,14 @@ function normalizePriceInput(value) {
 }
 
 
-function todayOrFuture(value) {
-    const selected = new Date(value);
-    if (Number.isNaN(selected.getTime())) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    selected.setHours(0, 0, 0, 0);
-    return selected >= today;
-}
-
 const orderValidators = [
     body('good').trim().isLength({ min: 2, max: 255 }).withMessage('Название должно быть длиной от 2 до 255 символов.'),
     body('quantity').isInt({ min: 1, max: 500 }).withMessage('Можно заказать от 1 до 500 единиц товара.'),
     body('price').customSanitizer(normalizePriceInput).isFloat({ min: 1, max: 1000000 }).withMessage('Стоимость должна быть числом от 1 до 1 000 000.'),
     body('link').customSanitizer(normalizeOrderLink).isURL({ require_protocol: true }).withMessage('Укажите корректную ссылку.'),
     body('comment').optional({ checkFalsy: true }).trim().isLength({ max: 1000 }).withMessage('Комментарий может содержать не более 1 000 символов.'),
-    body('arrival_date').isISO8601().withMessage('Укажите дату доставки.').custom(todayOrFuture).withMessage('Желаемая дата доставки не может быть раньше текущего дня.'),
+    body('arrival_date').custom(isCalendarDate).withMessage('Укажите корректную дату доставки.').bail()
+        .custom(value => value >= moscowCalendarDate()).withMessage('Желаемая дата доставки не может быть раньше текущего дня.'),
 ];
 
 const adminOrderValidators = [

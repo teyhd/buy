@@ -1,6 +1,10 @@
 (function () {
     const GENERIC_ERROR = 'Не удалось сохранить. Проверьте соединение и попробуйте ещё раз.';
     let noticeTimeout;
+    let pendingSaves = 0;
+    let refreshUrl;
+    let saveError;
+    const openModals = new Set();
 
     function safeJson(response) {
         return response.text().then((text) => {
@@ -102,11 +106,28 @@
         }
     }
 
-    function initStatusAutosave() {
-        let pendingSaves = 0;
-        let refreshUrl;
-        let saveError;
+    function refreshOrdersWhenReady() {
+        // Reloading can discard an open form or cancel a save.
+        if (pendingSaves > 0 || (refreshUrl && openModals.size > 0)) return;
+        if (refreshUrl) {
+            if (saveError) {
+                refreshUrl.searchParams.delete('updated');
+                refreshUrl.searchParams.set('error', saveError);
+            }
+            window.location.replace(refreshUrl);
+            refreshUrl = undefined;
+        }
+        saveError = undefined;
+    }
 
+    function queueListRefresh(returnTo, message) {
+        if (refreshUrl) return;
+        refreshUrl = new URL(returnTo, window.location.href);
+        refreshUrl.searchParams.delete('error');
+        if (message) refreshUrl.searchParams.set('updated', message);
+    }
+
+    function initStatusAutosave() {
         document.addEventListener('change', async (event) => {
             const select = event.target.closest('[data-status-select]');
             if (!select) return;
@@ -129,22 +150,22 @@
                     },
                     body: requestBody({
                         status: nextStatus,
+                        previous_status: previousStatus,
                         return_to: returnTo,
                     }),
                 });
                 const data = await safeJson(response);
 
                 if (!response.ok || data.ok !== true) {
+                    if (response.status === 409 || response.status === 404) queueListRefresh(returnTo);
                     throw new Error(data.message || GENERIC_ERROR);
                 }
 
                 select.dataset.originalStatus = nextStatus;
                 const message = data.message || 'Статус заказа сохранён.';
                 const statusFilter = select.closest('[data-status-filter]').dataset.statusFilter;
-                if (!refreshUrl && (data.closed || (statusFilter && nextStatus !== statusFilter))) {
-                    refreshUrl = new URL(returnTo, window.location.href);
-                    refreshUrl.searchParams.delete('error');
-                    refreshUrl.searchParams.set('updated', message);
+                if (data.closed || (statusFilter && nextStatus !== statusFilter)) {
+                    queueListRefresh(returnTo, message);
                 }
                 setInlineState(select, 'success', 'Сохранено');
                 if (!saveError) showNotice('success', message);
@@ -156,29 +177,27 @@
             } finally {
                 select.disabled = false;
                 pendingSaves -= 1;
-                // Reloading earlier can cancel another order's pending request.
-                if (pendingSaves === 0) {
-                    if (refreshUrl) {
-                        if (saveError) {
-                            refreshUrl.searchParams.delete('updated');
-                            refreshUrl.searchParams.set('error', saveError);
-                        }
-                        window.location.replace(refreshUrl);
-                        refreshUrl = undefined;
-                    }
-                    saveError = undefined;
-                }
+                refreshOrdersWhenReady();
             }
         });
     }
 
     function initEditModals() {
+        document.addEventListener('show.bs.modal', (event) => {
+            openModals.add(event.target);
+        });
+        document.addEventListener('hidden.bs.modal', (event) => {
+            openModals.delete(event.target);
+            refreshOrdersWhenReady();
+        });
         document.addEventListener('submit', async (event) => {
             const form = event.target.closest('.js-admin-edit-form');
             if (!form) return;
             event.preventDefault();
             clearModalErrors(form);
+            pendingSaves += 1;
 
+            const modalElement = form.closest('.modal');
             const submitButton = form.querySelector('[data-submit-button]');
             if (submitButton) {
                 submitButton.disabled = true;
@@ -199,13 +218,19 @@
                 const data = await safeJson(response);
 
                 if (response.status === 422) {
-                    showModalError(form, data.message || 'Проверьте поля формы.');
+                    const message = data.message || 'Проверьте поля формы.';
+                    const formVisible = modalElement?.classList.contains('show');
+                    showModalError(form, message);
                     applyFieldErrors(form, data.fieldErrors || {});
                     form.dispatchEvent(new CustomEvent('order-link-rejected', { bubbles: true, detail: data }));
+                    if (!formVisible) {
+                        saveError = message;
+                        showNotice('error', message);
+                    }
                     return;
                 }
 
-                if (!response.ok || data.ok === false) {
+                if (!response.ok || data.ok !== true) {
                     throw new Error(data.message || GENERIC_ERROR);
                 }
 
@@ -214,19 +239,22 @@
                     form.elements.link.dataset.originalLink = data.order.link;
                 }
 
-                const modalElement = form.closest('.modal');
                 if (modalElement && window.bootstrap) {
                     window.bootstrap.Modal.getOrCreateInstance(modalElement).hide();
                 }
-                showNotice('success', data.message || 'Данные заказа сохранены.');
+                if (!saveError) showNotice('success', data.message || 'Данные заказа сохранены.');
             } catch (error) {
-                showModalError(form, error.message || GENERIC_ERROR);
-                showNotice('error', error.message || GENERIC_ERROR);
+                const message = error.message || GENERIC_ERROR;
+                if (!modalElement?.classList.contains('show')) saveError = message;
+                showModalError(form, message);
+                showNotice('error', message);
             } finally {
                 if (submitButton) {
                     submitButton.disabled = false;
                     submitButton.textContent = submitButton.dataset.originalText || 'Сохранить';
                 }
+                pendingSaves -= 1;
+                refreshOrdersWhenReady();
             }
         });
     }

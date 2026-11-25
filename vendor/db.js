@@ -3,6 +3,7 @@ dotenv.config();
 import { pool } from '../buy.js';
 import { mlog } from './logs.js';
 import { BLOCKED_LINK_CODE, BLOCKED_LINK_MESSAGE, isBlockedOrderLink, normalizeOrderLink } from '../public/javascript/order-link-policy.js';
+import { dateDisplayValue, dateInputValue, isCalendarDate } from './orderDates.js';
 import { enqueueOrderNotifications, hasOrderChanged } from './orderNotifications.js';
 
 export const ORDER_STATUS = Object.freeze({
@@ -105,6 +106,8 @@ const ORDER_OWNER_JOINS = `LEFT JOIN sso.users AS sso_users ON sso_users.id = or
     LEFT JOIN users AS legacy_users ON legacy_users.id = orders.author_id
     LEFT JOIN sso.users AS creator_users ON creator_users.id = orders.created_by_sso_id`;
 const ACCOUNTING_JOIN = `LEFT JOIN order_accounting AS accounting ON accounting.order_id = orders.id`;
+const ACCOUNTING_PERIOD_SQL = `COALESCE(accounting.fiscal_period,
+    DATE_FORMAT(orders.arrival_date, '%Y-%m'), DATE_FORMAT(orders.creation_date, '%Y-%m'))`;
 const ORDER_ANALYTICS_SELECT = `${ORDER_OWNER_SELECT},
     accounting.order_id AS accounting_order_id,
     accounting.budget_category,
@@ -447,8 +450,7 @@ function buildOwnerScopeFilter(ownerColumn, ownerId, scope) {
 
 function normalizeDate(value) {
     const text = normalizeText(value);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return '';
-    return text;
+    return isCalendarDate(text) ? text : '';
 }
 
 function normalizeMonth(value) {
@@ -478,26 +480,6 @@ function normalizeOptionalMoney(value) {
 function normalizeLimitedText(value, maxLength = 255) {
     const text = normalizeText(value);
     return text.length > maxLength ? text.slice(0, maxLength) : text;
-}
-
-function dateInputValue(value) {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-
-function dateDisplayValue(value) {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}.${month}.${year}`;
 }
 
 function fiscalPeriodFromDate(value) {
@@ -624,11 +606,11 @@ function buildAnalyticsFilter(filters) {
         params.push(filters.date_to);
     }
     if (filters.fiscal_from) {
-        where.push('accounting.fiscal_period >= ?');
+        where.push(`${ACCOUNTING_PERIOD_SQL} >= ?`);
         params.push(filters.fiscal_from);
     }
     if (filters.fiscal_to) {
-        where.push('accounting.fiscal_period <= ?');
+        where.push(`${ACCOUNTING_PERIOD_SQL} <= ?`);
         params.push(filters.fiscal_to);
     }
     if (filters.payment_status) {
@@ -940,8 +922,8 @@ function analyticsCsv(rows) {
     rows.forEach((row) => {
         lines.push([
             row.id,
-            row.creation_date ? new Date(row.creation_date).toISOString().slice(0, 10) : '',
-            row.arrival_date ? new Date(row.arrival_date).toISOString().slice(0, 10) : '',
+            dateInputValue(row.creation_date),
+            dateInputValue(row.arrival_date),
             row.owner_label,
             row.owner_type === 'sso' ? 'SSO' : 'legacy',
             row.good,
@@ -1187,7 +1169,7 @@ export const updateOrderAdmin = async (req, res) => {
     try {
         connection = await pool.getConnection();
         await connection.beginTransaction();
-        const [existingRows] = await connection.query('SELECT id, link FROM orders WHERE id = ? LIMIT 1 FOR UPDATE', [orderId]);
+        const [existingRows] = await connection.query('SELECT id, link, price FROM orders WHERE id = ? LIMIT 1 FOR UPDATE', [orderId]);
         if (existingRows.length === 0) {
             await connection.rollback();
             if (wantsJson(req)) {
@@ -1206,20 +1188,24 @@ export const updateOrderAdmin = async (req, res) => {
             'UPDATE orders SET quantity = ?, price = ?, link = ? WHERE id = ?',
             [quantity, price, link, orderId]
         );
+        await connection.query(
+            `UPDATE order_accounting SET planned_amount = ?
+             WHERE order_id = ? AND payment_status = ? AND actual_amount IS NULL
+                AND planned_amount <=> CAST(? AS DECIMAL(12,2))`,
+            [price, orderId, PAYMENT_STATUS.NOT_PLANNED, existingRows[0].price]
+        );
 
-        await connection.commit();
-        mlog('Заказ был отредактирован администратором.');
+        let order;
         if (wantsJson(req)) {
-            const [rows] = await connection.query(
-                `SELECT ${ORDER_OWNER_SELECT} FROM orders ${ORDER_OWNER_JOINS} WHERE orders.id = ? LIMIT 1`,
+            const [[savedOrder]] = await connection.query(
+                'SELECT id, quantity, price, link FROM orders WHERE id = ? LIMIT 1',
                 [orderId]
             );
-            const order = attachOrderUi(rows[0] || {
-                id: orderId,
-                quantity,
-                price,
-                link,
-            });
+            order = attachOrderUi(savedOrder);
+        }
+        await connection.commit();
+        mlog('Заказ был отредактирован администратором.');
+        if (order) {
             return res.status(200).json({
                 ok: true,
                 message: 'Данные заказа сохранены.',
@@ -1253,22 +1239,23 @@ export const updateOrderAdmin = async (req, res) => {
 export const updateOrderStatus = async (req, res) => {
     let connection;
     const status = req.body.status;
+    const previousStatus = req.body.previous_status;
     const redirectTo = localReturnTo(req.body.return_to, '/manageorders');
     const orderId = normalizeId(req.params.id);
     if (!orderId) {
         return jsonOrRedirect(req, res, 400, redirectTo, 'error', 'Некорректный номер заказа.');
     }
-    if (!isValidStatus(status)) {
+    if (!isValidStatus(status)
+        || (previousStatus !== undefined && previousStatus !== '' && !isValidStatus(previousStatus))) {
         return jsonOrRedirect(req, res, 400, redirectTo, 'error', 'Недопустимый статус заказа.');
     }
 
     try {
         connection = await pool.getConnection();
-        const [existingRows] = await connection.query('SELECT id FROM orders WHERE id = ? LIMIT 1', [orderId]);
-        if (existingRows.length === 0) {
-            return jsonOrRedirect(req, res, 404, redirectTo, 'error', 'Заказ не найден или был удалён.');
-        }
-        await connection.query(
+        const params = [status, ORDER_STATUS.RECEIVED, ORDER_STATUS.RECEIVED, status, orderId];
+        const statusGuard = previousStatus === undefined ? '' : ' AND (status <=> ? OR status = ?)';
+        if (statusGuard) params.push(previousStatus || null, status);
+        const [result] = await connection.query(
             `UPDATE orders
              SET received_at = CASE
                  WHEN ? <> ? THEN NULL
@@ -1276,9 +1263,18 @@ export const updateOrderStatus = async (req, res) => {
                  ELSE UTC_TIMESTAMP(3)
              END,
              status = ?
-             WHERE id = ?`,
-            [status, ORDER_STATUS.RECEIVED, ORDER_STATUS.RECEIVED, status, orderId]
+             WHERE id = ?${statusGuard}`,
+            params
         );
+        if (result.affectedRows === 0) {
+            if (statusGuard) {
+                const [rows] = await connection.query('SELECT id FROM orders WHERE id = ? LIMIT 1', [orderId]);
+                if (rows.length) {
+                    return jsonOrRedirect(req, res, 409, redirectTo, 'error', 'Статус заказа уже изменился. Проверьте актуальный список.');
+                }
+            }
+            return jsonOrRedirect(req, res, 404, redirectTo, 'error', 'Заказ не найден или был удалён.');
+        }
 
         const message = isClosedStatus(status)
             ? 'Заказ перенесён в архив.'
@@ -1459,7 +1455,7 @@ export const orderAnalytics = async (req, res) => {
             .map((row) => attachAnalyticsAmountUi(row, totalAmount));
 
         const [monthRowsRaw] = await connection.query(
-            `SELECT COALESCE(accounting.fiscal_period, DATE_FORMAT(orders.arrival_date, '%Y-%m'), DATE_FORMAT(orders.creation_date, '%Y-%m'), 'Без периода') AS period,
+            `SELECT COALESCE(${ACCOUNTING_PERIOD_SQL}, 'Без периода') AS period,
                 COUNT(*) AS orders_count,
                 COALESCE(SUM(COALESCE(accounting.planned_amount, orders.price, 0)), 0) AS planned_amount,
                 COALESCE(SUM(CASE WHEN accounting.payment_status = ? THEN COALESCE(accounting.actual_amount, accounting.planned_amount, orders.price, 0) ELSE 0 END), 0) AS actual_amount,
@@ -1894,6 +1890,7 @@ export const createOrderForUser = async (req, res) => {
     const ownerId = normalizeId(req.body.owner_sso_id);
 
     if (!ownerId) {
+        res.status(422);
         return formOrderForUser(req, res, { owner_sso_id: 'Выберите заказчика из SSO.' }, 'Проверьте поля формы.');
     }
 
@@ -1901,6 +1898,7 @@ export const createOrderForUser = async (req, res) => {
         connection = await pool.getConnection();
         const owner = await loadBuySsoUserById(connection, ownerId);
         if (!owner) {
+            res.status(422);
             return formOrderForUser(req, res, { owner_sso_id: 'Пользователь не найден или у него нет роли buy.' }, 'Проверьте заказчика.');
         }
 
@@ -2007,32 +2005,32 @@ export const updateOrder = async (req, res) => {
             comment,
             arrival_date,
         };
-        const changed = hasOrderChanged(existingRows[0], nextOrder);
-        if (changed) {
+        const previousOrder = existingRows[0];
+        if (hasOrderChanged(previousOrder, nextOrder)) {
             await connection.query(
                 `UPDATE orders
                  SET good = ?, quantity = ?, price = ?, link = ?, comment = ?, arrival_date = ?
                  WHERE id = ?`,
                 [good, quantity, price, link, comment, arrival_date, req.params.id]
             );
-        }
-        await connection.query(
-            `INSERT INTO order_accounting
-                (order_id, payment_status, fiscal_period, planned_amount, document_status, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, NOW(), NOW())
-             ON DUPLICATE KEY UPDATE
-                planned_amount = CASE
-                    WHEN payment_status = VALUES(payment_status) AND actual_amount IS NULL THEN VALUES(planned_amount)
-                    ELSE planned_amount
-                END,
-                fiscal_period = CASE
-                    WHEN payment_status = VALUES(payment_status) AND actual_amount IS NULL THEN VALUES(fiscal_period)
-                    ELSE fiscal_period
-                END,
-                updated_at = NOW()`,
-            [req.params.id, PAYMENT_STATUS.NOT_PLANNED, fiscalPeriodFromDate(arrival_date), price, DOCUMENT_STATUS.NONE]
-        );
-        if (changed) {
+            await connection.query(
+                `INSERT INTO order_accounting
+                    (order_id, payment_status, fiscal_period, planned_amount, document_status, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+                 ON DUPLICATE KEY UPDATE
+                    planned_amount = CASE
+                        WHEN payment_status = VALUES(payment_status) AND actual_amount IS NULL
+                            AND planned_amount <=> CAST(? AS DECIMAL(12,2)) THEN VALUES(planned_amount)
+                        ELSE planned_amount
+                    END,
+                    fiscal_period = CASE
+                        WHEN payment_status = VALUES(payment_status) AND actual_amount IS NULL
+                            AND fiscal_period <=> ? THEN VALUES(fiscal_period)
+                        ELSE fiscal_period
+                    END`,
+                [req.params.id, PAYMENT_STATUS.NOT_PLANNED, fiscalPeriodFromDate(arrival_date), price, DOCUMENT_STATUS.NONE,
+                    previousOrder.price, fiscalPeriodFromDate(dateInputValue(previousOrder.arrival_date)) || null]
+            );
             await enqueueOrderNotifications(connection, {
                 eventType: 'updated',
                 order: nextOrder,

@@ -44,6 +44,18 @@ test('detects only real user order changes', () => {
     assert.equal(hasOrderChanged(order, { ...order, arrival_date: '2026-08-21' }), true);
 });
 
+test('compares the stored local delivery date with the submitted calendar date', t => {
+    const previousTimezone = process.env.TZ;
+    process.env.TZ = 'Europe/Moscow';
+    t.after(() => {
+        if (previousTimezone === undefined) delete process.env.TZ;
+        else process.env.TZ = previousTimezone;
+    });
+    const stored = { ...order, arrival_date: new Date(2026, 7, 20) };
+    assert.equal(hasOrderChanged(stored, order), false);
+    assert.equal(hasOrderChanged(stored, { ...order, arrival_date: '2026-08-19' }), true);
+});
+
 test('uses the configured retry schedule and caps it at one hour', () => {
     assert.equal(retryDelaySeconds(1), 60);
     assert.equal(retryDelaySeconds(2), 300);
