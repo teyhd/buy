@@ -1,5 +1,6 @@
 (function () {
     const GENERIC_ERROR = 'Не удалось сохранить. Проверьте соединение и попробуйте ещё раз.';
+    let noticeTimeout;
 
     function safeJson(response) {
         return response.text().then((text) => {
@@ -17,12 +18,13 @@
         const alert = document.querySelector('[data-manage-alert]');
 
         if (alert) {
+            window.clearTimeout(noticeTimeout);
             alert.className = `alert manage-orders-alert alert-${type === 'success' ? 'success' : 'danger'}`;
             alert.textContent = text;
             alert.classList.remove('d-none');
 
             if (type === 'success') {
-                window.setTimeout(() => alert.classList.add('d-none'), 3500);
+                noticeTimeout = window.setTimeout(() => alert.classList.add('d-none'), 3500);
             }
         }
 
@@ -101,6 +103,10 @@
     }
 
     function initStatusAutosave() {
+        let pendingSaves = 0;
+        let refreshUrl;
+        let saveError;
+
         document.addEventListener('change', async (event) => {
             const select = event.target.closest('[data-status-select]');
             if (!select) return;
@@ -108,6 +114,8 @@
             const nextStatus = select.value;
             if (nextStatus === previousStatus) return;
 
+            const returnTo = select.dataset.returnTo || window.location.pathname + window.location.search;
+            pendingSaves += 1;
             select.disabled = true;
             setInlineState(select, null, 'Сохранение...');
 
@@ -121,7 +129,7 @@
                     },
                     body: requestBody({
                         status: nextStatus,
-                        return_to: select.dataset.returnTo || window.location.pathname + window.location.search,
+                        return_to: returnTo,
                     }),
                 });
                 const data = await safeJson(response);
@@ -133,20 +141,33 @@
                 select.dataset.originalStatus = nextStatus;
                 const message = data.message || 'Статус заказа сохранён.';
                 const statusFilter = select.closest('[data-status-filter]').dataset.statusFilter;
-                if (data.closed || (statusFilter && nextStatus !== statusFilter)) {
-                    const url = new URL(select.dataset.returnTo, window.location.href);
-                    url.searchParams.set('updated', message);
-                    window.location.replace(url);
-                    return;
+                if (!refreshUrl && (data.closed || (statusFilter && nextStatus !== statusFilter))) {
+                    refreshUrl = new URL(returnTo, window.location.href);
+                    refreshUrl.searchParams.delete('error');
+                    refreshUrl.searchParams.set('updated', message);
                 }
                 setInlineState(select, 'success', 'Сохранено');
-                showNotice('success', message);
+                if (!saveError) showNotice('success', message);
             } catch (error) {
+                saveError = error.message || GENERIC_ERROR;
                 select.value = previousStatus;
                 setInlineState(select, 'error', 'Ошибка');
-                showNotice('error', error.message || GENERIC_ERROR);
+                showNotice('error', saveError);
             } finally {
                 select.disabled = false;
+                pendingSaves -= 1;
+                // Reloading earlier can cancel another order's pending request.
+                if (pendingSaves === 0) {
+                    if (refreshUrl) {
+                        if (saveError) {
+                            refreshUrl.searchParams.delete('updated');
+                            refreshUrl.searchParams.set('error', saveError);
+                        }
+                        window.location.replace(refreshUrl);
+                        refreshUrl = undefined;
+                    }
+                    saveError = undefined;
+                }
             }
         });
     }
