@@ -15,11 +15,11 @@ test('closing the eleventh active order leaves one page and no further batch', a
 
     t.mock.method(connection, 'query', async (sql, params) => {
         if (sql.startsWith('UPDATE orders')) {
-            db.prepare(sql).run(...params);
-            activeIds = activeIds.filter(id => id !== Number(params.at(-1)));
-            return [{ affectedRows: 1 }];
+            const result = db.prepare(sql.replace('<=>', 'IS')).run(...params);
+            if (result.changes) activeIds = activeIds.filter(id => id !== Number(params[4]));
+            return [{ affectedRows: result.changes }];
         }
-        if (sql.startsWith('SELECT id FROM orders WHERE id')) return [[{ id: params[0] }]];
+        if (sql.startsWith('SELECT id FROM orders WHERE id')) return [db.prepare(sql).all(...params)];
         if (sql.includes('COUNT(*) AS total')) return [[{ total: activeIds.length }]];
         assert.match(sql, /ORDER BY orders.id DESC LIMIT \? OFFSET \?/);
         const [limit, offset] = params.slice(-2);
@@ -45,12 +45,12 @@ test('closing the eleventh active order leaves one page and no further batch', a
     assert.match(secondPage, /Предыдущая страница/);
     assert.match(await get(), /data-list-more/);
 
-    const setStatus = status => fetch(`${base}/1/status`, {
-        method: 'POST',
-        headers: { accept: 'application/json' },
-        body: new URLSearchParams({ status }),
-    });
-    const response = await setStatus('Получен');
+    const setStatus = (status, id = 1, previousStatus) => {
+        const body = new URLSearchParams({ status });
+        if (previousStatus !== undefined) body.set('previous_status', previousStatus);
+        return fetch(`${base}/${id}/status`, { method: 'POST', headers: { accept: 'application/json' }, body });
+    };
+    const response = await setStatus('Получен', 1, 'Ожидает получения');
     assert.equal(response.status, 200);
     assert.equal((await response.json()).closed, true);
     assert.equal(readReceipt(), statementTime);
@@ -65,10 +65,19 @@ test('closing the eleventh active order leaves one page and no further batch', a
     assert.doesNotMatch(staleBatch, /<title>|data-order-row=|data-list-more/);
 
     statementTime = '2026-11-24 10:00:00.000';
-    assert.equal((await setStatus('Получен')).status, 200);
+    assert.equal((await setStatus('Получен', 1, 'Ожидает получения')).status, 200);
+    assert.equal(readReceipt(), '2026-11-24 09:15:00.000');
+    const stale = await setStatus('Закупаем', 1, 'Ожидает получения');
+    assert.equal(stale.status, 409);
+    assert.equal((await stale.json()).ok, false);
+    assert.equal(db.prepare('SELECT status FROM orders WHERE id = 1').get().status, 'Получен');
     assert.equal(readReceipt(), '2026-11-24 09:15:00.000');
     assert.equal((await setStatus('Ожидает получения')).status, 200);
     assert.equal(readReceipt(), null);
     assert.equal((await setStatus('Получен')).status, 200);
     assert.equal(readReceipt(), statementTime);
+
+    const missing = await setStatus('Закупаем', 999, 'На рассмотрении');
+    assert.equal(missing.status, 404);
+    assert.equal((await missing.json()).ok, false);
 });

@@ -1,4 +1,5 @@
 import { mlog } from './logs.js';
+import { dateInputValue } from './orderDates.js';
 
 const SSO_SERVICE_ID = Number(process.env.SSO_SERVICE_ID || 12);
 const ADMIN_ROLE_ID = 5;
@@ -26,14 +27,6 @@ function priceLabel(value) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return '—';
     return numeric.toFixed(2).replace('.', ',');
-}
-
-function dateOnly(value) {
-    if (!value) return '';
-    if (value instanceof Date && !Number.isNaN(value.getTime())) {
-        return value.toISOString().slice(0, 10);
-    }
-    return String(value).slice(0, 10);
 }
 
 function actorLabel(actor) {
@@ -84,7 +77,7 @@ export function hasOrderChanged(existingOrder, nextOrder) {
         || Number(existingOrder.price) !== Number(nextOrder.price)
         || String(existingOrder.link || '') !== String(nextOrder.link || '')
         || String(existingOrder.comment || '') !== String(nextOrder.comment || '')
-        || dateOnly(existingOrder.arrival_date) !== dateOnly(nextOrder.arrival_date);
+        || dateInputValue(existingOrder.arrival_date) !== dateInputValue(nextOrder.arrival_date);
 }
 
 export async function enqueueOrderNotifications(connection, { eventType, order, actor }) {
